@@ -3,18 +3,17 @@ package hongik.finEdu.calendar.controller;
 import hongik.finEdu.calendar.entity.TaxSchedule;
 import hongik.finEdu.calendar.repository.TaxScheduleRepository;
 import hongik.finEdu.calendar.service.TaxScheduleCrawler;
+import hongik.finEdu.common.exception.BusinessException;
+import hongik.finEdu.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @RestController
 @RequestMapping("/api/tax-schedule")
 @RequiredArgsConstructor
@@ -53,7 +52,6 @@ public class TaxScheduleController {
     /**
      * 수동 크롤링 트리거 (관리자용)
      * POST /api/tax-schedule/crawl
-     * - 배포 직후 즉시 데이터 수집할 때 사용
      */
     @PostMapping("/crawl")
     public ResponseEntity<Map<String, String>> triggerCrawl() {
@@ -61,9 +59,7 @@ public class TaxScheduleController {
             crawler.crawlNextThreeMonths();
             return ResponseEntity.ok(Map.of("status", "success", "message", "크롤링 완료"));
         } catch (Exception e) {
-            log.error("수동 크롤링 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError()
-                .body(Map.of("status", "error", "message", e.getMessage()));
+            throw new BusinessException(ErrorCode.CRAWL_FAILED, e.getMessage(), e);
         }
     }
 
@@ -82,10 +78,9 @@ public class TaxScheduleController {
                 "status", "success",
                 "message", year + "년 " + month + "월 크롤링 완료"
             ));
-        } catch (IOException e) {
-            log.error("수동 크롤링 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError()
-                .body(Map.of("status", "error", "message", e.getMessage()));
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.CRAWL_FAILED,
+                    year + "년 " + month + "월 - " + e.getMessage(), e);
         }
     }
 }
