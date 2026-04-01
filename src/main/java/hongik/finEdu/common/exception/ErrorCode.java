@@ -26,7 +26,10 @@ public enum ErrorCode {
     AI_RESPONSE_PARSE_ERROR(HttpStatus.BAD_GATEWAY, "AI002", "AI 서버 응답을 파싱할 수 없습니다", false),
 
     // ── 세무일정(Calendar) ──
-    CRAWL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "T001", "세무일정 크롤링에 실패했습니다", false);
+    CRAWL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "T001", "세무일정 크롤링에 실패했습니다", false),
+
+    // ── 시세(Main) ──
+    KOSPI_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "M001", "코스피 지수를 가져오지 못했습니다", false);
 
     private final HttpStatus httpStatus;
     private final String code;

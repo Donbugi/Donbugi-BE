@@ -25,6 +25,13 @@ spring:
       host: localhost
       port: 6379
 
+# 코스피 (네이버 금융 스크랩 → Redis 캐시, 분 단위 갱신에 맞춤)
+kospi:
+  naver-url: https://finance.naver.com/sise/sise_index.naver?code=KOSPI
+  redis-key: market:kospi:now
+  cache-ttl-seconds: 60
+  connect-timeout-ms: 10000
+
 # 퀴즈
 quiz:
   ai-server-url: http://localhost:8000/quiz
