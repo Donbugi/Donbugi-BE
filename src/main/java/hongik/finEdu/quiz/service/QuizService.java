@@ -8,6 +8,7 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.newscrawler.entity.Article;
 import hongik.finEdu.newscrawler.repository.ArticleRepository;
 import hongik.finEdu.quiz.dto.QuizResponseDto;
+import hongik.finEdu.quiz.dto.RandomQuizPackItemDto;
 import hongik.finEdu.quiz.entity.Quiz;
 import hongik.finEdu.quiz.repository.QuizRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -42,6 +44,34 @@ public class QuizService {
     private static final String LOCK_PREFIX = "lock:quiz:";
     private static final int POLL_INTERVAL_MS = 500;
     private static final int POLL_MAX_WAIT_MS = 10_000;
+    private static final int RANDOM_PACK_SIZE_MAX = 10;
+
+    /**
+     * DB에서 본문이 있는 기사를 무작위로 뽑아 기사별 퀴즈를 생성·조회한다.
+     * 기존 {@link #getQuiz(Long)} (캐시·락·AI) 로직을 그대로 재사용한다.
+     *
+     * @param size 1~10, 보통 3
+     */
+    public List<RandomQuizPackItemDto> getRandomQuizPack(int size) {
+        if (size < 1 || size > RANDOM_PACK_SIZE_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "size는 1~" + RANDOM_PACK_SIZE_MAX + " 사이여야 합니다 (got " + size + ")");
+        }
+
+        List<Article> articles = articleRepository.findRandomArticlesWithContent(size);
+        if (articles.isEmpty()) {
+            throw new BusinessException(ErrorCode.NO_ARTICLES_FOR_QUIZ);
+        }
+
+        return articles.stream()
+                .map(article -> RandomQuizPackItemDto.builder()
+                        .articleId(article.getArticleId())
+                        .title(article.getTitle())
+                        .category(article.getCategory())
+                        .quizzes(getQuiz(article.getArticleId()))
+                        .build())
+                .collect(Collectors.toList());
+    }
 
     /**
      * 기사 ID로 퀴즈 조회

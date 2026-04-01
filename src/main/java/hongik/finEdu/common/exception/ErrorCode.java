@@ -14,6 +14,7 @@ public enum ErrorCode {
 
     // ── 기사(Article) ──
     ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND, "A001", "기사를 찾을 수 없습니다", false),
+    NO_ARTICLES_FOR_QUIZ(HttpStatus.NOT_FOUND, "A002", "본문이 있는 기사가 없어 퀴즈를 만들 수 없습니다", false),
 
     // ── 퀴즈(Quiz) ──
     QUIZ_GENERATION_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Q001", "퀴즈 생성 시간이 초과되었습니다", false),
