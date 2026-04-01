@@ -25,6 +25,15 @@ spring:
       host: localhost
       port: 6379
 
+# 삼성증권 일간이슈 — POST /api/issue-schedule/import 로 월 1회 수집
+issue-calendar:
+  samsung-origin: https://www.samsungpop.com
+  list-path: /ux/kor/invest/issue/dayDataList.do
+  connect-timeout-ms: 15000
+  read-timeout-ms: 30000
+  max-rows-per-day: 500
+  between-day-delay-ms: 400
+
 # 코스피 (네이버 금융 스크랩 → Redis 캐시, 분 단위 갱신에 맞춤)
 kospi:
   naver-url: https://finance.naver.com/sise/sise_index.naver?code=KOSPI
