@@ -50,6 +50,18 @@ kospi:
   cache-ttl-seconds: 60
   connect-timeout-ms: 10000
 
+# 최근 한 달 관심 뉴스(카테고리별 조회 수 Redis + AI 한마디)
+news:
+  interest:
+    redis-prefix: "finEdu:news:interest:"
+    timezone: Asia/Seoul
+    month-key-ttl-days: 400
+    insight-cache-ttl-minutes: 30
+    # 예: http://localhost:8000/news/interest-insight  (POST JSON { "topics": [...] } → { "insight": "..." })
+    ai-insight-url: ""
+    ai-connect-timeout-ms: 5000
+    ai-read-timeout-ms: 45000
+
 # 퀴즈
 quiz:
   ai-server-url: http://localhost:8000/quiz
@@ -57,6 +69,13 @@ quiz:
   lock-ttl-seconds: 30
   ai-connect-timeout-ms: 5000
   ai-read-timeout-ms: 60000
+  # 과제 정답률·오답노트 (전부 Redis, DB 미사용)
+  stats:
+    redis-prefix: "finEdu:quiz:stats:"
+    timezone: Asia/Seoul
+    day-key-ttl-days: 120
+    month-key-ttl-days: 800
+    wrong-retention-days: 60
 
 # 크롤러
 crawler:
