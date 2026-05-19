@@ -29,7 +29,11 @@ public enum ErrorCode {
     CRAWL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "T001", "세무일정 크롤링에 실패했습니다", false),
 
     // ── 시세(Main) ──
-    KOSPI_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "M001", "코스피 지수를 가져오지 못했습니다", false);
+    KOSPI_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "M001", "코스피 지수를 가져오지 못했습니다", false),
+
+    // ── 포인트 교환 ──
+    POINT_BENEFIT_NOT_FOUND(HttpStatus.BAD_REQUEST, "P001", "알 수 없는 혜택 코드입니다", false),
+    INSUFFICIENT_POINTS(HttpStatus.BAD_REQUEST, "P002", "포인트가 부족합니다", false);
 
     private final HttpStatus httpStatus;
     private final String code;

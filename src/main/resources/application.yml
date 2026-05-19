@@ -66,3 +66,11 @@ crawler:
       url: "https://news.naver.com/breakingnews/section/101/262"
     - name: 생활경제
       url: "https://news.naver.com/breakingnews/section/101/310"
+
+# 포인트 교환(메일 안내) — 첫 계정 생성 시 지급 포인트, 발신 주소
+# spring.mail.host 등을 설정하면 교환 완료 후 JavaMail로 발송합니다. 미설정 시 본문은 로그로만 출력됩니다.
+app:
+  points:
+    demo-initial-balance: 10000
+    mail-from: "nniij88@gmail.com"
+    qr-delivery-days-hint: 3
