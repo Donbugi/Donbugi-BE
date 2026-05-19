@@ -1,5 +1,7 @@
 package hongik.finEdu.newscrawler.service;
 
+import hongik.finEdu.common.exception.BusinessException;
+import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.newscrawler.config.CrawlerProperties;
 import hongik.finEdu.newscrawler.dto.ArticleFeedItemDto;
 import hongik.finEdu.newscrawler.dto.CategoryArticlesDto;
@@ -17,8 +19,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ArticleFeedService {
 
-    private static final int BODY_MAX_CHARS = 8000;
-
     private final ArticleRepository articleRepository;
     private final CrawlerProperties crawlerProperties;
 
@@ -26,6 +26,13 @@ public class ArticleFeedService {
     public List<ArticleFeedItemDto> findLatest(int limit) {
         List<Article> rows = articleRepository.findAllByOrderByCollectedAtDesc(PageRequest.of(0, limit));
         return rows.stream().map(this::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ArticleFeedItemDto findById(Long articleId) {
+        Article a = articleRepository.findById(articleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ARTICLE_NOT_FOUND));
+        return toDto(a);
     }
 
     /**
@@ -44,7 +51,6 @@ public class ArticleFeedService {
     }
 
     private ArticleFeedItemDto toDto(Article a) {
-        String body = pickBody(a);
         List<String> tags = new ArrayList<>();
         if (a.getCategory() != null && !a.getCategory().isBlank()) {
             tags.add(a.getCategory());
@@ -55,26 +61,23 @@ public class ArticleFeedService {
                 a.getTitle(),
                 a.getPress(),
                 a.getPublishedAt(),
-                body,
+                a.getCollectedAt(),
+                blankToNull(a.getSummary()),
+                safeContent(a.getContent()),
                 tags,
-                a.getUrl()
+                a.getUrl(),
+                null
         );
     }
 
-    private static String pickBody(Article a) {
-        if (a.getSummary() != null && !a.getSummary().isBlank()) {
-            return truncate(a.getSummary(), BODY_MAX_CHARS);
-        }
-        if (a.getContent() != null && !a.getContent().isBlank()) {
-            return truncate(a.getContent(), BODY_MAX_CHARS);
-        }
-        return "";
+    private static String safeContent(String content) {
+        return content != null ? content : "";
     }
 
-    private static String truncate(String s, int max) {
-        if (s.length() <= max) {
-            return s;
+    private static String blankToNull(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
         }
-        return s.substring(0, max) + "…";
+        return s;
     }
 }

@@ -6,6 +6,7 @@ import hongik.finEdu.newscrawler.service.ArticleFeedService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,5 +40,14 @@ public class ArticleFeedController {
             @RequestParam(defaultValue = "10") int perCategory) {
         int n = Math.min(50, Math.max(1, perCategory));
         return ResponseEntity.ok(articleFeedService.findLatestByEachCategory(n));
+    }
+
+    /**
+     * 기사 단건 (상세 화면). 목록과 동일 스키마로 전체 본문·요약 포함.
+     * GET /api/articles/{articleId}
+     */
+    @GetMapping("/{articleId}")
+    public ResponseEntity<ArticleFeedItemDto> one(@PathVariable Long articleId) {
+        return ResponseEntity.ok(articleFeedService.findById(articleId));
     }
 }
