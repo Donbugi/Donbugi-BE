@@ -1,6 +1,7 @@
 package hongik.finEdu.quiz.controller;
 
 import hongik.finEdu.quiz.dto.QuizResponseDto;
+import hongik.finEdu.quiz.dto.QuizSessionItemDto;
 import hongik.finEdu.quiz.dto.RandomQuizPackItemDto;
 import hongik.finEdu.quiz.service.QuizService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,12 @@ import java.util.List;
 public class QuizController {
 
     private final QuizService quizService;
+
+    @GetMapping("/random-session")
+    public ResponseEntity<List<QuizSessionItemDto>> getRandomQuizSession(
+            @RequestParam(defaultValue = "3") int size) {
+        return ResponseEntity.ok(quizService.getRandomQuizSession(size));
+    }
 
     /**
      * 무작위 기사 N개에 대한 퀴즈 팩 (기본 3개)

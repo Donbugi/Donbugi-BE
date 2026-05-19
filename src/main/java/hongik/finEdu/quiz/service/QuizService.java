@@ -8,6 +8,7 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.newscrawler.entity.Article;
 import hongik.finEdu.newscrawler.repository.ArticleRepository;
 import hongik.finEdu.quiz.dto.QuizResponseDto;
+import hongik.finEdu.quiz.dto.QuizSessionItemDto;
 import hongik.finEdu.quiz.dto.RandomQuizPackItemDto;
 import hongik.finEdu.quiz.entity.Quiz;
 import hongik.finEdu.quiz.repository.QuizRepository;
@@ -20,7 +21,12 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,6 +51,98 @@ public class QuizService {
     private static final int POLL_INTERVAL_MS = 500;
     private static final int POLL_MAX_WAIT_MS = 10_000;
     private static final int RANDOM_PACK_SIZE_MAX = 10;
+
+    /** 랜덤 세션: 기사 묶음당 한 번에 가져올 개수 */
+    private static final int SESSION_ARTICLE_BATCH = 8;
+    /** 랜덤 세션: 퀴즈 풀 채우기 최대 라운드 (기사 부족·AI 실패 대비) */
+    private static final int SESSION_MAX_ROUNDS = 10;
+
+    private record QuizCandidate(Long articleId, String articleTitle, QuizResponseDto quiz) {
+    }
+
+    /**
+     * 여러 기사에서 AI(또는 DB/캐시) 퀴즈를 모은 뒤, 중복 문항을 빼고 무작위로 {@code size}개만 반환.
+     * 화면: Q1~Qn + 객관식 보기 나열.
+     */
+    public List<QuizSessionItemDto> getRandomQuizSession(int size) {
+        if (size < 1 || size > RANDOM_PACK_SIZE_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "size는 1~" + RANDOM_PACK_SIZE_MAX + " 사이여야 합니다 (got " + size + ")");
+        }
+
+        List<QuizCandidate> pool = new ArrayList<>();
+        for (int round = 0; round < SESSION_MAX_ROUNDS && pool.size() < size * 6; round++) {
+            List<Article> articles = articleRepository.findRandomArticlesWithContent(SESSION_ARTICLE_BATCH);
+            if (articles.isEmpty()) {
+                break;
+            }
+            for (Article a : articles) {
+                try {
+                    List<QuizResponseDto> qs = getQuiz(a.getArticleId());
+                    for (QuizResponseDto q : qs) {
+                        if (isUsableQuiz(q)) {
+                            pool.add(new QuizCandidate(a.getArticleId(), a.getTitle(), q));
+                        }
+                    }
+                } catch (BusinessException ex) {
+                    log.debug("[random-session] articleId={} 스킵: {}", a.getArticleId(), ex.getMessage());
+                }
+            }
+        }
+
+        Collections.shuffle(pool, ThreadLocalRandom.current());
+
+        List<QuizSessionItemDto> picked = new ArrayList<>(size);
+        Set<String> seenQuestions = new HashSet<>();
+        for (QuizCandidate c : pool) {
+            String norm = normalizeQuestionKey(c.quiz().getQuestion());
+            if (!seenQuestions.add(norm)) {
+                continue;
+            }
+            picked.add(toSessionItem(picked.size() + 1, c));
+            if (picked.size() == size) {
+                break;
+            }
+        }
+
+        if (picked.size() < size) {
+            throw new BusinessException(ErrorCode.NO_ARTICLES_FOR_QUIZ,
+                    "무작위로 모은 퀴즈가 " + picked.size() + "개뿐입니다 (필요 " + size + "개). 기사·퀴즈를 더 쌓은 뒤 다시 시도해 주세요.");
+        }
+        return picked;
+    }
+
+    private static boolean isUsableQuiz(QuizResponseDto q) {
+        if (q.getQuestion() == null || q.getQuestion().isBlank()) {
+            return false;
+        }
+        if (q.getOptions() == null || q.getOptions().isEmpty()) {
+            return false;
+        }
+        int idx = q.getCorrectIndex();
+        return idx >= 0 && idx < q.getOptions().size();
+    }
+
+    private static String normalizeQuestionKey(String question) {
+        return question.trim().replaceAll("\\s+", " ");
+    }
+
+    private static QuizSessionItemDto toSessionItem(int order, QuizCandidate c) {
+        QuizResponseDto q = c.quiz();
+        String title = c.articleTitle() == null ? "" : c.articleTitle();
+        if (title.length() > 120) {
+            title = title.substring(0, 117) + "...";
+        }
+        return new QuizSessionItemDto(
+                order,
+                c.articleId(),
+                title,
+                q.getQuestion().trim(),
+                List.copyOf(q.getOptions()),
+                q.getCorrectIndex(),
+                q.getExplanation()
+        );
+    }
 
     /**
      * DB에서 본문이 있는 기사를 무작위로 뽑아 기사별 퀴즈를 생성·조회한다.
