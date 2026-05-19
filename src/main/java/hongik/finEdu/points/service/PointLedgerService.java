@@ -3,11 +3,15 @@ package hongik.finEdu.points.service;
 import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.points.domain.PointBenefitCode;
+import hongik.finEdu.points.dto.PointEarnRequest;
+import hongik.finEdu.points.dto.PointEarnResponseDto;
 import hongik.finEdu.points.dto.RedeemLedgerResult;
 import hongik.finEdu.points.dto.PointRedeemRequest;
 import hongik.finEdu.points.entity.PointAccount;
+import hongik.finEdu.points.entity.PointHistoryEntry;
 import hongik.finEdu.points.entity.PointRedemption;
 import hongik.finEdu.points.repository.PointAccountRepository;
+import hongik.finEdu.points.repository.PointHistoryRepository;
 import hongik.finEdu.points.repository.PointRedemptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,8 +24,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PointLedgerService {
 
+    private static final int TITLE_MAX = 200;
+    private static final int DETAIL_MAX = 500;
+
     private final PointAccountRepository accountRepository;
     private final PointRedemptionRepository redemptionRepository;
+    private final PointHistoryRepository historyRepository;
+    private final PointActivityCacheService pointActivityCacheService;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     @Value("${app.points.demo-initial-balance:0}")
     private int demoInitialBalance;
@@ -34,10 +44,7 @@ public class PointLedgerService {
         int cost = benefit.getPointsRequired();
 
         PointAccount account = accountRepository.findByUserId(userId)
-                .orElseGet(() -> accountRepository.save(PointAccount.builder()
-                        .userId(userId)
-                        .balance(Math.max(0, demoInitialBalance))
-                        .build()));
+                .orElseGet(() -> createAccountWithDemoAndHistory(userId));
 
         if (account.getBalance() < cost) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_POINTS,
@@ -56,7 +63,90 @@ public class PointLedgerService {
                 .pointsSpent(cost)
                 .build());
 
+        historyRepository.save(PointHistoryEntry.builder()
+                .userId(userId)
+                .delta(-cost)
+                .title("혜택 교환: " + benefit.getBenefitName())
+                .detail(benefit.getDescription())
+                .relatedRef(ref)
+                .build());
+
+        scheduleActivityCacheRefresh(userId);
         return new RedeemLedgerResult(ref, userId, email, benefit, cost, account.getBalance());
+    }
+
+    private PointAccount createAccountWithDemoAndHistory(String userId) {
+        int initial = Math.max(0, demoInitialBalance);
+        PointAccount na = accountRepository.save(PointAccount.builder()
+                .userId(userId)
+                .balance(initial)
+                .build());
+        if (initial > 0) {
+            historyRepository.save(PointHistoryEntry.builder()
+                    .userId(userId)
+                    .delta(initial)
+                    .title("가입/데모 포인트 지급")
+                    .detail("첫 교환 시 자동 지급된 포인트입니다.")
+                    .build());
+        }
+        return na;
+    }
+
+    /**
+     * 적립(퀴즈·이벤트 등) — 신규 계정은 잔액 0으로 시작하며 데모 지급은 교환 플로우에서만 적용.
+     */
+    @Transactional
+    public PointEarnResponseDto earn(PointEarnRequest request) {
+        String userId = requireUserId(request.userId());
+        int amount = request.amount();
+        if (amount <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "적립 포인트는 1 이상이어야 합니다.");
+        }
+        if (request.title() == null || request.title().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "적립 제목은 필수입니다.");
+        }
+        String title = request.title().trim();
+        if (title.length() > TITLE_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "적립 제목은 " + TITLE_MAX + "자 이내여야 합니다.");
+        }
+        String detail = normalizeDetail(request.detail());
+
+        PointAccount account = accountRepository.findByUserId(userId)
+                .orElseGet(() -> accountRepository.save(PointAccount.builder()
+                        .userId(userId)
+                        .balance(0)
+                        .build()));
+
+        account.credit(amount);
+        accountRepository.save(account);
+
+        historyRepository.save(PointHistoryEntry.builder()
+                .userId(userId)
+                .delta(amount)
+                .title(title)
+                .detail(detail)
+                .build());
+
+        scheduleActivityCacheRefresh(userId);
+        return new PointEarnResponseDto(userId, amount, account.getBalance());
+    }
+
+    private String normalizeDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return null;
+        }
+        String d = detail.trim();
+        if (d.length() > DETAIL_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "상세 설명은 " + DETAIL_MAX + "자 이내여야 합니다.");
+        }
+        return d;
+    }
+
+    private void scheduleActivityCacheRefresh(String userId) {
+        afterCommitExecutor.runAfterCommit("point-activity-redis",
+                () -> pointActivityCacheService.refreshFromDb(userId));
     }
 
     private static String requireUserId(String userId) {

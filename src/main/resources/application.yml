@@ -74,3 +74,6 @@ app:
     demo-initial-balance: 10000
     mail-from: "nniij88@gmail.com"
     qr-delivery-days-hint: 3
+    # 최근 적립·사용 3건 캐시 (키: {prefix}{userId}, 값: JSON 배열)
+    activity-redis-key-prefix: "finEdu:points:activity:"
+    activity-cache-ttl-hours: 168

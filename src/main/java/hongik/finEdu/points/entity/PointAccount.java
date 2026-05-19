@@ -31,6 +31,13 @@ public class PointAccount {
         this.balance = balance;
     }
 
+    public void credit(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("적립 포인트는 양수여야 합니다.");
+        }
+        this.balance += amount;
+    }
+
     public void debit(int amount) {
         if (amount <= 0) {
             throw new IllegalArgumentException("차감 포인트는 양수여야 합니다.");
