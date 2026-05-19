@@ -25,6 +25,15 @@ spring:
       host: localhost
       port: 6379
 
+# Swagger UI (springdoc-openapi): http://localhost:8080/swagger-ui.html
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
 # 삼성증권 일간이슈 — POST /api/issue-schedule/import 로 월 1회 수집
 issue-calendar:
   samsung-origin: https://www.samsungpop.com

@@ -31,6 +31,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.jsoup:jsoup:1.17.2'
 	implementation 'org.springframework.boot:spring-boot-starter-json'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
