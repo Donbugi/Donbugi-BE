@@ -5,10 +5,13 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.news.interest.dto.NewsInterestReadRequest;
 import hongik.finEdu.news.interest.dto.NewsInterestTopicDto;
 import hongik.finEdu.news.interest.dto.NewsInterestTrendsResponse;
+import hongik.finEdu.user.entity.AppUser;
+import hongik.finEdu.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,6 +33,7 @@ public class NewsInterestRedisService {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final NewsInterestAiClient newsInterestAiClient;
+    private final AppUserRepository appUserRepository;
 
     @Value("${news.interest.redis-prefix:finEdu:news:interest:}")
     private String redisPrefix;
@@ -65,6 +69,7 @@ public class NewsInterestRedisService {
         stringRedisTemplate.expire(key, Duration.ofDays(monthKeyTtlDays));
     }
 
+    @Transactional
     public NewsInterestTrendsResponse getTrends(String userId, Integer top) {
         String uid = requireUserId(userId);
         int limit = top == null || top < 1 ? TOPIC_DEFAULT_LIMIT : Math.min(top, 20);
@@ -98,33 +103,53 @@ public class NewsInterestRedisService {
             return "아직 이번 달에 읽은 뉴스 기록이 없어요. 관심 카테고리 뉴스를 살펴 보세요.";
         }
 
-        String cacheKey = insightCacheKey(userId, ym, topList);
+        String sig = topicSignature(topList);
+
+        AppUser existing = appUserRepository.findByExternalUserId(userId).orElse(null);
+        if (existing != null
+                && ym.toString().equals(existing.getNewsInsightYearMonth())
+                && sig.equals(existing.getNewsInsightSignature())
+                && existing.getNewsInsightText() != null
+                && !existing.getNewsInsightText().isBlank()) {
+            return existing.getNewsInsightText();
+        }
+
+        String cacheKey = insightCacheKey(userId, ym, sig);
         String cached = stringRedisTemplate.opsForValue().get(cacheKey);
         if (cached != null && !cached.isBlank()) {
+            persistInsight(userId, ym, sig, cached);
             return cached;
         }
 
         String fallback = "관심 토픽을 바탕으로 한쪽으로 치우치지 않게 다양한 금융·경제 뉴스도 함께 살펴 보시면 도움이 됩니다.";
-
         String text = newsInterestAiClient.requestInsight(topList).orElse(fallback);
+
+        persistInsight(userId, ym, sig, text);
         stringRedisTemplate.opsForValue().set(cacheKey, text, Duration.ofMinutes(insightCacheTtlMinutes));
         return text;
     }
 
-    private String insightCacheKey(String userId, YearMonth ym, List<NewsInterestTopicDto> topList) {
-        String sigPayload = String.join("|",
-                topList.stream().map(t -> t.name() + ":" + t.count()).toList());
-        String hash = sha256Short(sigPayload);
-        return redisPrefix + "insight:" + userId + ":" + ym + ":" + hash;
+    private void persistInsight(String externalUserId, YearMonth ym, String signatureHex, String text) {
+        AppUser u = appUserRepository.findByExternalUserId(externalUserId)
+                .orElseGet(() -> AppUser.builder().externalUserId(externalUserId).build());
+        u.setNewsInsightText(text);
+        u.setNewsInsightYearMonth(ym.toString());
+        u.setNewsInsightSignature(signatureHex);
+        appUserRepository.save(u);
     }
 
-    private static String sha256Short(String s) {
+    private String insightCacheKey(String userId, YearMonth ym, String signatureHex) {
+        return redisPrefix + "insight:" + userId + ":" + ym + ":" + signatureHex;
+    }
+
+    private static String topicSignature(List<NewsInterestTopicDto> topList) {
+        String payload = String.join("|",
+                topList.stream().map(t -> t.name() + ":" + t.count()).toList());
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] d = md.digest(s.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(d, 0, 8);
+            return HexFormat.of().formatHex(md.digest(payload.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
-            return String.valueOf(s.hashCode());
+            return Integer.toHexString(payload.hashCode());
         }
     }
 
