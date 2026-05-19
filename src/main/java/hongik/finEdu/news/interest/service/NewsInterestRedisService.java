@@ -5,6 +5,8 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.news.interest.dto.NewsInterestReadRequest;
 import hongik.finEdu.news.interest.dto.NewsInterestTopicDto;
 import hongik.finEdu.news.interest.dto.NewsInterestTrendsResponse;
+import hongik.finEdu.points.policy.PointPolicy;
+import hongik.finEdu.points.service.PointRewardService;
 import hongik.finEdu.user.entity.AppUser;
 import hongik.finEdu.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -34,6 +37,7 @@ public class NewsInterestRedisService {
     private final StringRedisTemplate stringRedisTemplate;
     private final NewsInterestAiClient newsInterestAiClient;
     private final AppUserRepository appUserRepository;
+    private final PointRewardService pointRewardService;
 
     @Value("${news.interest.redis-prefix:finEdu:news:interest:}")
     private String redisPrefix;
@@ -67,6 +71,21 @@ public class NewsInterestRedisService {
 
         stringRedisTemplate.opsForHash().increment(key, cat, 1);
         stringRedisTemplate.expire(key, Duration.ofDays(monthKeyTtlDays));
+
+        LocalDate today = LocalDate.now(zone());
+        String dailyReadKey = redisPrefix + "dailyread:" + userId + ":" + today;
+        Long dailyTotal = stringRedisTemplate.opsForValue().increment(dailyReadKey);
+        stringRedisTemplate.expire(dailyReadKey, Duration.ofDays(3));
+        if (dailyTotal != null
+                && dailyTotal > 0
+                && dailyTotal % PointPolicy.NEWS_READ_MILESTONE_INTERVAL == 0) {
+            pointRewardService.tryAwardOnce(
+                    userId,
+                    "newsread:daily:" + userId + ":" + today + ":hit:" + dailyTotal,
+                    PointPolicy.NEWS_READ_MILESTONE_POINTS,
+                    "오늘 뉴스 읽기 " + dailyTotal + "회 달성",
+                    PointPolicy.NEWS_READ_MILESTONE_INTERVAL + "회마다 " + PointPolicy.NEWS_READ_MILESTONE_POINTS + "P");
+        }
     }
 
     @Transactional
