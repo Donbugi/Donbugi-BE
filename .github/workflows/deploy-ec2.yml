@@ -83,7 +83,6 @@ jobs:
               print(f"{key}={shlex.quote(value)}")
           PY
 
-          scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new finedu-image.tar.gz "${EC2_SSH_USER}@${HOST}:/tmp/finedu-image.tar.gz"
           scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new finedu.env "${EC2_SSH_USER}@${HOST}:/tmp/finedu.env"
           ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
             set -euo pipefail
@@ -96,7 +95,12 @@ jobs:
             sudo mv /tmp/finedu.env "${ENV_PATH}"
             sudo chown root:root "${ENV_PATH}"
             sudo chmod 600 "${ENV_PATH}"
-            sudo docker load -i /tmp/finedu-image.tar.gz
+          EOF
+
+          gzip -dc finedu-image.tar.gz | ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" "sudo docker load"
+
+          ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
+            set -euo pipefail
             sudo docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
             sudo docker run -d \
               --name "${CONTAINER_NAME}" \
