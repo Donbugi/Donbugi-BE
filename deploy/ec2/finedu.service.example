@@ -1,0 +1,13 @@
+[Unit]
+Description=finEdu Docker container
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start finedu
+ExecStop=/usr/bin/docker stop finedu
+
+[Install]
+WantedBy=multi-user.target

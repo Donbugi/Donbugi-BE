@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy Docker to EC2
 
 on:
   push:
@@ -20,62 +20,103 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
-      - name: Build bootJar
-        run: chmod +x ./gradlew && ./gradlew bootJar -x test --no-daemon
-
-      - name: Resolve JAR path
-        id: jar
+      - name: Build Docker image
         run: |
-          JAR=$(ls build/libs/finEdu-*.jar 2>/dev/null | head -1)
-          if [ -z "$JAR" ]; then
-            echo "::error::bootJar 결과물을 찾을 수 없습니다 (build/libs/finEdu-*.jar)"
-            exit 1
-          fi
-          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          docker build -t finedu:${{ github.sha }} -t finedu:latest .
+          docker save finedu:${{ github.sha }} finedu:latest | gzip > finedu-image.tar.gz
 
       - name: Deploy over SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
           EC2_SSH_USER: ${{ secrets.EC2_USER }}
+          FINEDU_DB_HOST: ${{ secrets.FINEDU_DB_HOST }}
+          FINEDU_DB_PORT: ${{ secrets.FINEDU_DB_PORT }}
+          FINEDU_DB_NAME: ${{ secrets.FINEDU_DB_NAME }}
+          FINEDU_DB_USER: ${{ secrets.FINEDU_DB_USER }}
+          FINEDU_DB_PASSWORD: ${{ secrets.FINEDU_DB_PASSWORD }}
+          FINEDU_REDIS_HOST: ${{ secrets.FINEDU_REDIS_HOST }}
+          FINEDU_REDIS_PORT: ${{ secrets.FINEDU_REDIS_PORT }}
+          FIN_EDU_AI_QUIZ_URL: ${{ secrets.FIN_EDU_AI_QUIZ_URL }}
+          FIN_EDU_AI_INSIGHT_URL: ${{ secrets.FIN_EDU_AI_INSIGHT_URL }}
+          APP_AUTH_JWT_SECRET: ${{ secrets.APP_AUTH_JWT_SECRET }}
         run: |
           set -euo pipefail
           test -n "${SSH_PRIVATE_KEY:-}" || { echo "::error::secret EC2_SSH_PRIVATE_KEY 가 비어 있습니다"; exit 1; }
           test -n "${HOST:-}" || { echo "::error::secret EC2_HOST 가 비어 있습니다"; exit 1; }
           test -n "${EC2_SSH_USER:-}" || { echo "::error::secret EC2_USER 가 비어 있습니다"; exit 1; }
+          test -n "${FINEDU_DB_USER:-}" || { echo "::error::secret FINEDU_DB_USER 가 비어 있습니다"; exit 1; }
+          test -n "${FINEDU_DB_PASSWORD:-}" || { echo "::error::secret FINEDU_DB_PASSWORD 가 비어 있습니다"; exit 1; }
+          test -n "${APP_AUTH_JWT_SECRET:-}" || { echo "::error::secret APP_AUTH_JWT_SECRET 가 비어 있습니다"; exit 1; }
 
           DEPLOY_PATH="/opt/finedu"
-          JAR_NAME="finedu.jar"
-          SYSTEMD_UNIT="finedu"
+          ENV_PATH="${DEPLOY_PATH}/finedu.env"
+          CONTAINER_NAME="finedu"
+          NETWORK_NAME="finedu-net"
 
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/ec2_deploy
           chmod 600 ~/.ssh/ec2_deploy
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          REMOTE_JAR="${DEPLOY_PATH%/}/${JAR_NAME}"
-          echo "→ ${EC2_SSH_USER}@${HOST}:${REMOTE_JAR}"
+          python3 - << 'PY' > finedu.env
+          import os
+          import shlex
 
-          scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${{ steps.jar.outputs.path }}" "${EC2_SSH_USER}@${HOST}:/tmp/finedu-upload.jar"
+          values = {
+              "SPRING_PROFILES_ACTIVE": "prod",
+              "SPRING_DATASOURCE_URL": (
+                  "jdbc:postgresql://"
+                  f"{os.getenv('FINEDU_DB_HOST') or 'host.docker.internal'}:"
+                  f"{os.getenv('FINEDU_DB_PORT') or '5432'}/"
+                  f"{os.getenv('FINEDU_DB_NAME') or 'finedu'}"
+              ),
+              "SPRING_DATASOURCE_USERNAME": os.getenv("FINEDU_DB_USER") or "",
+              "SPRING_DATASOURCE_PASSWORD": os.getenv("FINEDU_DB_PASSWORD") or "",
+              "SPRING_DATA_REDIS_HOST": os.getenv("FINEDU_REDIS_HOST") or "host.docker.internal",
+              "SPRING_DATA_REDIS_PORT": os.getenv("FINEDU_REDIS_PORT") or "6379",
+              "FIN_EDU_AI_QUIZ_URL": os.getenv("FIN_EDU_AI_QUIZ_URL") or "http://finedu-ai:8000/quiz",
+              "FIN_EDU_AI_INSIGHT_URL": os.getenv("FIN_EDU_AI_INSIGHT_URL") or "http://finedu-ai:8000/news/interest-insight",
+              "APP_AUTH_JWT_SECRET": os.getenv("APP_AUTH_JWT_SECRET") or "",
+          }
+          for key, value in values.items():
+              print(f"{key}={shlex.quote(value)}")
+          PY
+
+          scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new finedu-image.tar.gz "${EC2_SSH_USER}@${HOST}:/tmp/finedu-image.tar.gz"
+          scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new finedu.env "${EC2_SSH_USER}@${HOST}:/tmp/finedu.env"
           ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
             set -euo pipefail
-            sudo mkdir -p "${DEPLOY_PATH}"
-            sudo mv /tmp/finedu-upload.jar "${REMOTE_JAR}"
-            sudo chown "${EC2_SSH_USER}:${EC2_SSH_USER}" "${REMOTE_JAR}" || true
-            sudo chmod 644 "${REMOTE_JAR}"
-            if systemctl list-unit-files | grep -q "^${SYSTEMD_UNIT}.service"; then
-              sudo systemctl restart "${SYSTEMD_UNIT}"
-              sudo systemctl is-active --quiet "${SYSTEMD_UNIT}" || { echo "systemctl: ${SYSTEMD_UNIT} 가 active 가 아님"; sudo systemctl status "${SYSTEMD_UNIT}" || true; exit 1; }
-            else
-              echo "경고: systemd 유닛 '${SYSTEMD_UNIT}' 가 없어 재시작을 건너뜁니다. (deploy/ec2/finedu.service.example 참고)"
+            if ! command -v docker >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker.io
             fi
+            sudo systemctl enable --now docker
+            sudo mkdir -p "${DEPLOY_PATH}"
+            sudo mv /tmp/finedu.env "${ENV_PATH}"
+            sudo chown root:root "${ENV_PATH}"
+            sudo chmod 600 "${ENV_PATH}"
+            sudo docker load -i /tmp/finedu-image.tar.gz
+            sudo docker network create "${NETWORK_NAME}" >/dev/null 2>&1 || true
+            sudo docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+            sudo docker run -d \
+              --name "${CONTAINER_NAME}" \
+              --restart unless-stopped \
+              --network "${NETWORK_NAME}" \
+              --add-host host.docker.internal:host-gateway \
+              --env-file "${ENV_PATH}" \
+              -p 8080:8080 \
+              finedu:${{ github.sha }}
+            for i in {1..30}; do
+              if curl -fsS http://127.0.0.1:8080/swagger-ui.html >/dev/null; then
+                sudo docker ps --filter "name=${CONTAINER_NAME}"
+                exit 0
+              fi
+              sleep 2
+            done
+            sudo docker logs --tail 200 "${CONTAINER_NAME}" || true
+            exit 1
           EOF
 
-          rm -f ~/.ssh/ec2_deploy
+          rm -f ~/.ssh/ec2_deploy finedu.env

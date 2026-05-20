@@ -7,11 +7,11 @@ spring:
     exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   profiles:
-    active: local
+    active: ${SPRING_PROFILES_ACTIVE:local}
 
   # 데이터소스 (PostgreSQL)
   datasource:
-    url: jdbc:postgresql://localhost:5432/finedu
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/finedu}
     driver-class-name: org.postgresql.Driver
 
   # JPA
@@ -26,8 +26,8 @@ spring:
   # Redis
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
 # Swagger UI (springdoc-openapi): http://localhost:8080/swagger-ui.html
 springdoc:
@@ -62,13 +62,13 @@ news:
     month-key-ttl-days: 400
     insight-cache-ttl-minutes: 30
     # 예: http://localhost:8000/news/interest-insight  (POST JSON { "topics": [...] } → { "insight": "..." })
-    ai-insight-url: ""
+    ai-insight-url: ${FIN_EDU_AI_INSIGHT_URL:http://127.0.0.1:8000/news/interest-insight}
     ai-connect-timeout-ms: 5000
     ai-read-timeout-ms: 45000
 
 # 퀴즈
 quiz:
-  ai-server-url: http://localhost:8000/quiz
+  ai-server-url: ${FIN_EDU_AI_QUIZ_URL:http://127.0.0.1:8000/quiz}
   cache-ttl-days: 7
   lock-ttl-seconds: 30
   ai-connect-timeout-ms: 5000
@@ -103,7 +103,7 @@ crawler:
 app:
   auth:
     jwt:
-      secret: "finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!"
+      secret: ${APP_AUTH_JWT_SECRET:finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!}
       expiration-hours: 720
 
 # 포인트 교환(메일 안내) — 첫 계정 생성 시 지급 포인트, 발신 주소
