@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 앱 사용자(외부 식별자 기준). 뉴스 관심 AI 한마디 등 부가 정보 보관.
+ * 앱 사용자. {@code externalUserId}는 API·포인트 등에서 쓰는 공개 userId(회원가입 시 UUID).
  */
 @Entity
 @Table(
@@ -22,22 +22,27 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** API/클라이언트에서 쓰는 userId (예: 로그인 id, UUID) */
+    /** 클라이언트/타 API에 전달하는 사용자 식별자 (UUID 문자열) */
     @Column(name = "external_user_id", nullable = false, length = 64)
     private String externalUserId;
 
-    /** 월간 관심 뉴스 토픽 기반 AI 한마디 */
+    /** 이메일 가입 시 설정. 레거시 행은 null 가능 */
+    @Column(length = 255, unique = true)
+    private String email;
+
+    @Column(name = "password_hash", length = 120)
+    private String passwordHash;
+
+    /** 가입 직후 null, 로그인 후 2~10자(유니코드)로 설정 */
+    @Column(length = 40)
+    private String nickname;
+
     @Column(name = "news_insight_text", columnDefinition = "TEXT")
     private String newsInsightText;
 
-    /** 인사이트가 귀속된 달 (Asia/Seoul, yyyy-MM) */
     @Column(name = "news_insight_year_month", length = 7)
     private String newsInsightYearMonth;
 
-    /**
-     * 당시 상위 토픽 목록 서명(SHA-256 hex).
-     * 토픽 분포가 같으면 AI 재호출 없이 DB 문구 재사용.
-     */
     @Column(name = "news_insight_signature", length = 64)
     private String newsInsightSignature;
 }

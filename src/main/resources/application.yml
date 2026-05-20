@@ -2,6 +2,10 @@ spring:
   application:
     name: finEdu
 
+  # 기본 in-memory 유저(랜덤 비밀번호) 비활성화 — JWT만 사용
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
   profiles:
     active: local
 
@@ -95,9 +99,15 @@ crawler:
     - name: 생활경제
       url: "https://news.naver.com/breakingnews/section/101/310"
 
+# JWT (운영에서는 app.auth.jwt.secret 를 환경변수로 강하게 지정)
+app:
+  auth:
+    jwt:
+      secret: "finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!"
+      expiration-hours: 720
+
 # 포인트 교환(메일 안내) — 첫 계정 생성 시 지급 포인트, 발신 주소
 # spring.mail.host 등을 설정하면 교환 완료 후 JavaMail로 발송합니다. 미설정 시 본문은 로그로만 출력됩니다.
-app:
   points:
     timezone: Asia/Seoul
     demo-initial-balance: 10000

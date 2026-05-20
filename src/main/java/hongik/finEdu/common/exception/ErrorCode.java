@@ -33,7 +33,12 @@ public enum ErrorCode {
 
     // ── 포인트 교환 ──
     POINT_BENEFIT_NOT_FOUND(HttpStatus.BAD_REQUEST, "P001", "알 수 없는 혜택 코드입니다", false),
-    INSUFFICIENT_POINTS(HttpStatus.BAD_REQUEST, "P002", "포인트가 부족합니다", false);
+    INSUFFICIENT_POINTS(HttpStatus.BAD_REQUEST, "P002", "포인트가 부족합니다", false),
+
+    // ── 인증(Auth) ──
+    DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 가입된 이메일입니다", false),
+    INVALID_LOGIN(HttpStatus.UNAUTHORIZED, "U002", "이메일 또는 비밀번호가 올바르지 않습니다", false),
+    UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "U003", "로그인이 필요합니다", false);
 
     private final HttpStatus httpStatus;
     private final String code;

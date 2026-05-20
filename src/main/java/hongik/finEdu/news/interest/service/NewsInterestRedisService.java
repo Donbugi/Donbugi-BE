@@ -149,12 +149,12 @@ public class NewsInterestRedisService {
     }
 
     private void persistInsight(String externalUserId, YearMonth ym, String signatureHex, String text) {
-        AppUser u = appUserRepository.findByExternalUserId(externalUserId)
-                .orElseGet(() -> AppUser.builder().externalUserId(externalUserId).build());
-        u.setNewsInsightText(text);
-        u.setNewsInsightYearMonth(ym.toString());
-        u.setNewsInsightSignature(signatureHex);
-        appUserRepository.save(u);
+        appUserRepository.findByExternalUserId(externalUserId).ifPresent(u -> {
+            u.setNewsInsightText(text);
+            u.setNewsInsightYearMonth(ym.toString());
+            u.setNewsInsightSignature(signatureHex);
+            appUserRepository.save(u);
+        });
     }
 
     private String insightCacheKey(String userId, YearMonth ym, String signatureHex) {
