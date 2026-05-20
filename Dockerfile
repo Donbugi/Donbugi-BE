@@ -7,7 +7,7 @@ COPY src ./src
 
 RUN chmod +x ./gradlew && ./gradlew bootJar -x test --no-daemon
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 COPY --from=build /workspace/build/libs/*.jar /app/finedu.jar

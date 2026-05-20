@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           docker build -t finedu:${{ github.sha }} -t finedu:latest .
-          docker save finedu:${{ github.sha }} finedu:latest | gzip > finedu-image.tar.gz
+          docker save finedu:${{ github.sha }} | gzip -1 > finedu-image.tar.gz
 
       - name: Deploy over SSH
         env:
@@ -61,7 +61,6 @@ jobs:
 
           python3 - << 'PY' > finedu.env
           import os
-          import shlex
 
           values = {
               "SPRING_PROFILES_ACTIVE": "prod",
@@ -80,7 +79,7 @@ jobs:
               "APP_AUTH_JWT_SECRET": os.getenv("APP_AUTH_JWT_SECRET") or "",
           }
           for key, value in values.items():
-              print(f"{key}={shlex.quote(value)}")
+              print(f"{key}={value.replace(chr(10), '')}")
           PY
 
           ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
@@ -91,6 +90,9 @@ jobs:
             fi
             sudo systemctl enable --now docker
             sudo mkdir -p "${DEPLOY_PATH}"
+            sudo docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+            sudo docker image prune -af >/dev/null 2>&1 || true
+            sudo docker builder prune -af >/dev/null 2>&1 || true
           EOF
 
           ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" "sudo tee '${ENV_PATH}' >/dev/null && sudo chown root:root '${ENV_PATH}' && sudo chmod 600 '${ENV_PATH}'" < finedu.env
@@ -99,14 +101,18 @@ jobs:
 
           ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
             set -euo pipefail
-            sudo docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+            sudo docker tag finedu:${{ github.sha }} finedu:latest
             sudo docker run -d \
               --name "${CONTAINER_NAME}" \
               --restart unless-stopped \
               --network host \
               --env-file "${ENV_PATH}" \
               finedu:${{ github.sha }}
-            for i in {1..30}; do
+            for i in {1..90}; do
+              if ! sudo docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q true; then
+                sudo docker logs --tail 200 "${CONTAINER_NAME}" || true
+                exit 1
+              fi
               if curl -fsS http://127.0.0.1:8080/swagger-ui.html >/dev/null; then
                 sudo docker ps --filter "name=${CONTAINER_NAME}"
                 exit 0
