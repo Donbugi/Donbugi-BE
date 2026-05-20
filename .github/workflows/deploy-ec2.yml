@@ -53,7 +53,6 @@ jobs:
           DEPLOY_PATH="/opt/finedu"
           ENV_PATH="${DEPLOY_PATH}/finedu.env"
           CONTAINER_NAME="finedu"
-          NETWORK_NAME="finedu-net"
 
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/ec2_deploy
@@ -68,16 +67,16 @@ jobs:
               "SPRING_PROFILES_ACTIVE": "prod",
               "SPRING_DATASOURCE_URL": (
                   "jdbc:postgresql://"
-                  f"{os.getenv('FINEDU_DB_HOST') or 'host.docker.internal'}:"
+                  f"{os.getenv('FINEDU_DB_HOST') or '127.0.0.1'}:"
                   f"{os.getenv('FINEDU_DB_PORT') or '5432'}/"
                   f"{os.getenv('FINEDU_DB_NAME') or 'finedu'}"
               ),
               "SPRING_DATASOURCE_USERNAME": os.getenv("FINEDU_DB_USER") or "",
               "SPRING_DATASOURCE_PASSWORD": os.getenv("FINEDU_DB_PASSWORD") or "",
-              "SPRING_DATA_REDIS_HOST": os.getenv("FINEDU_REDIS_HOST") or "host.docker.internal",
+              "SPRING_DATA_REDIS_HOST": os.getenv("FINEDU_REDIS_HOST") or "127.0.0.1",
               "SPRING_DATA_REDIS_PORT": os.getenv("FINEDU_REDIS_PORT") or "6379",
-              "FIN_EDU_AI_QUIZ_URL": os.getenv("FIN_EDU_AI_QUIZ_URL") or "http://finedu-ai:8000/quiz",
-              "FIN_EDU_AI_INSIGHT_URL": os.getenv("FIN_EDU_AI_INSIGHT_URL") or "http://finedu-ai:8000/news/interest-insight",
+              "FIN_EDU_AI_QUIZ_URL": os.getenv("FIN_EDU_AI_QUIZ_URL") or "http://127.0.0.1:8000/quiz",
+              "FIN_EDU_AI_INSIGHT_URL": os.getenv("FIN_EDU_AI_INSIGHT_URL") or "http://127.0.0.1:8000/news/interest-insight",
               "APP_AUTH_JWT_SECRET": os.getenv("APP_AUTH_JWT_SECRET") or "",
           }
           for key, value in values.items():
@@ -98,15 +97,12 @@ jobs:
             sudo chown root:root "${ENV_PATH}"
             sudo chmod 600 "${ENV_PATH}"
             sudo docker load -i /tmp/finedu-image.tar.gz
-            sudo docker network create "${NETWORK_NAME}" >/dev/null 2>&1 || true
             sudo docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
             sudo docker run -d \
               --name "${CONTAINER_NAME}" \
               --restart unless-stopped \
-              --network "${NETWORK_NAME}" \
-              --add-host host.docker.internal:host-gateway \
+              --network host \
               --env-file "${ENV_PATH}" \
-              -p 8080:8080 \
               finedu:${{ github.sha }}
             for i in {1..30}; do
               if curl -fsS http://127.0.0.1:8080/swagger-ui.html >/dev/null; then
