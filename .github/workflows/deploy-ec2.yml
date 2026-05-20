@@ -1,0 +1,81 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build bootJar
+        run: chmod +x ./gradlew && ./gradlew bootJar -x test --no-daemon
+
+      - name: Resolve JAR path
+        id: jar
+        run: |
+          JAR=$(ls build/libs/finEdu-*.jar 2>/dev/null | head -1)
+          if [ -z "$JAR" ]; then
+            echo "::error::bootJar 결과물을 찾을 수 없습니다 (build/libs/finEdu-*.jar)"
+            exit 1
+          fi
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy over SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          set -euo pipefail
+          test -n "${SSH_PRIVATE_KEY:-}" || { echo "::error::secret EC2_SSH_PRIVATE_KEY 가 비어 있습니다"; exit 1; }
+          test -n "${HOST:-}" || { echo "::error::secret EC2_HOST 가 비어 있습니다"; exit 1; }
+          test -n "${EC2_SSH_USER:-}" || { echo "::error::secret EC2_USER 가 비어 있습니다"; exit 1; }
+
+          DEPLOY_PATH="/opt/finedu"
+          JAR_NAME="finedu.jar"
+          SYSTEMD_UNIT="finedu"
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/ec2_deploy
+          chmod 600 ~/.ssh/ec2_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          REMOTE_JAR="${DEPLOY_PATH%/}/${JAR_NAME}"
+          echo "→ ${EC2_SSH_USER}@${HOST}:${REMOTE_JAR}"
+
+          scp -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${{ steps.jar.outputs.path }}" "${EC2_SSH_USER}@${HOST}:/tmp/finedu-upload.jar"
+          ssh -i ~/.ssh/ec2_deploy -o StrictHostKeyChecking=accept-new "${EC2_SSH_USER}@${HOST}" bash -s << EOF
+            set -euo pipefail
+            sudo mkdir -p "${DEPLOY_PATH}"
+            sudo mv /tmp/finedu-upload.jar "${REMOTE_JAR}"
+            sudo chown "${EC2_SSH_USER}:${EC2_SSH_USER}" "${REMOTE_JAR}" || true
+            sudo chmod 644 "${REMOTE_JAR}"
+            if systemctl list-unit-files | grep -q "^${SYSTEMD_UNIT}.service"; then
+              sudo systemctl restart "${SYSTEMD_UNIT}"
+              sudo systemctl is-active --quiet "${SYSTEMD_UNIT}" || { echo "systemctl: ${SYSTEMD_UNIT} 가 active 가 아님"; sudo systemctl status "${SYSTEMD_UNIT}" || true; exit 1; }
+            else
+              echo "경고: systemd 유닛 '${SYSTEMD_UNIT}' 가 없어 재시작을 건너뜁니다. (deploy/ec2/finedu.service.example 참고)"
+            fi
+          EOF
+
+          rm -f ~/.ssh/ec2_deploy
