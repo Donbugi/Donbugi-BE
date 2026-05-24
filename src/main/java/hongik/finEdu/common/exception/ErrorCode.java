@@ -30,6 +30,7 @@ public enum ErrorCode {
 
     // ── 시세(Main) ──
     KOSPI_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "M001", "코스피 지수를 가져오지 못했습니다", false),
+    ECONOMIC_WEATHER_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "M002", "경제 날씨 데이터를 가져오지 못했습니다", false),
 
     // ── 포인트 교환 ──
     POINT_BENEFIT_NOT_FOUND(HttpStatus.BAD_REQUEST, "P001", "알 수 없는 혜택 코드입니다", false),

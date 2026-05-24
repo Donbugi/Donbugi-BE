@@ -77,6 +77,7 @@ jobs:
               "FIN_EDU_AI_QUIZ_URL": os.getenv("FIN_EDU_AI_QUIZ_URL") or "http://127.0.0.1:8000/quiz",
               "FIN_EDU_AI_INSIGHT_URL": os.getenv("FIN_EDU_AI_INSIGHT_URL") or "http://127.0.0.1:8000/news/interest-insight",
               "APP_AUTH_JWT_SECRET": os.getenv("APP_AUTH_JWT_SECRET") or "",
+              "KOREAEXIM_AUTH_KEY": os.getenv("KOREAEXIM_AUTH_KEY") or "",
           }
           for key, value in values.items():
               print(f"{key}={value.replace(chr(10), '')}")

@@ -54,6 +54,23 @@ kospi:
   cache-ttl-seconds: 60
   connect-timeout-ms: 10000
 
+# 경제 날씨 (KOSPI + S&P500 + USD 환율 → 일별 Redis 캐시)
+# KOREAEXIM_AUTH_KEY: 수출입은행 Open API 인증키 (로컬은 application-local.yml 또는 환경변수)
+economic-weather:
+  kospi-api-url: https://m.stock.naver.com/api/index/KOSPI/basic
+  sp500-naver-api-url: https://polling.finance.naver.com/api/realtime/worldstock/stock/SPY
+  sp500-api-url: https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d
+  sp500-fallback-stooq-url: https://stooq.com/q/l/?s=^spx&f=sd2t2ohlcv&h&e=csv
+  exchange-api-base-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
+  koreaexim-auth-key: ${KOREAEXIM_AUTH_KEY:}
+  sp500-redis-key: market:sp500:now
+  sp500-stale-redis-key: market:sp500:last
+  sp500-cache-ttl-seconds: 3600
+  redis-key-prefix: "market:economic-weather:"
+  cache-ttl-seconds: 1800
+  connect-timeout-ms: 10000
+  read-timeout-ms: 15000
+
 # 최근 한 달 관심 뉴스(카테고리별 조회 수 Redis + AI 한마디)
 news:
   interest:
