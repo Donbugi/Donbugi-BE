@@ -71,6 +71,18 @@ economic-weather:
   connect-timeout-ms: 10000
   read-timeout-ms: 15000
 
+# 모의투자 (Mock Trading) — 20종목, 초기 1000만원
+mock-trading:
+  naver-stock-api-url: https://m.stock.naver.com/api/stock/{code}/basic
+  naver-polling-api-url: https://polling.finance.naver.com/api/realtime/domestic/stock/{code}
+  redis-key-prefix: "market:stock:"
+  price-cache-ttl-seconds: 300
+  price-refresh-ms: 300000
+  pending-check-ms: 300000
+  market-close-cron: "0 30 15 * * MON-FRI"
+  connect-timeout-ms: 10000
+  read-timeout-ms: 15000
+
 # 최근 한 달 관심 뉴스(카테고리별 조회 수 Redis + AI 한마디)
 news:
   interest:
