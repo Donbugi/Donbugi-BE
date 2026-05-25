@@ -13,6 +13,8 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -50,6 +52,7 @@ public class EconomicWeatherService {
                         .exchangeRate(dto.getExchangeRate())
                         .cached(true)
                         .at(Instant.now())
+                        .detailReasonLines(dto.getDetailReasonLines())
                         .build();
             } catch (Exception e) {
                 log.warn("[경제날씨] 캐시 파싱 실패, 재조회: {}", e.getMessage());
@@ -79,6 +82,8 @@ public class EconomicWeatherService {
         var sp500ChangeRate = MarketDataParser.computeChangeRate(
                 sp500.regularMarketPrice(), sp500.previousClose());
 
+        List<String> detailLines = buildDetailReasonLines(kospi, sp500ChangeRate, exchange);
+
         return EconomicWeatherResponseDto.builder()
                 .weatherCode(weather.getCode())
                 .weatherLabel(weather.getLabel())
@@ -106,6 +111,47 @@ public class EconomicWeatherService {
                         .build())
                 .cached(false)
                 .at(Instant.now())
+                .detailReasonLines(detailLines)
                 .build();
+    }
+
+    private List<String> buildDetailReasonLines(
+            MarketDataClient.KospiSnapshot kospi,
+            java.math.BigDecimal sp500ChangeRate,
+            MarketDataClient.ExchangeRateSnapshot exchange) {
+        List<String> lines = new ArrayList<>();
+        if (kospi.fluctuationsRatio() != null) {
+            lines.add("· 코스피 " + formatSigned(kospi.fluctuationsRatio()) + "% (" + directionLabel(kospi.direction()) + ")");
+        }
+        if (sp500ChangeRate != null) {
+            lines.add("· S&P500 " + formatSigned(sp500ChangeRate) + "%");
+        }
+        if (exchange.usdDealBasRate() != null) {
+            lines.add("· 원/달러 " + exchange.usdDealBasRate() + "원");
+        }
+        if (exchange.tenDayChangeRate() != null) {
+            lines.add("· 환율 10일 변동 " + formatSigned(exchange.tenDayChangeRate()) + "%");
+        }
+        lines.add("· 종합 점수 기준 시장 날씨 산출");
+        return lines;
+    }
+
+    private static String formatSigned(java.math.BigDecimal v) {
+        if (v == null) {
+            return "0";
+        }
+        return v.signum() > 0 ? "+" + v.stripTrailingZeros().toPlainString()
+                : v.stripTrailingZeros().toPlainString();
+    }
+
+    private static String directionLabel(String direction) {
+        if (direction == null) {
+            return "보합";
+        }
+        return switch (direction.toUpperCase()) {
+            case "UP", "RISE" -> "상승";
+            case "DOWN", "FALL" -> "하락";
+            default -> "보합";
+        };
     }
 }

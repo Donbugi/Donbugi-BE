@@ -45,4 +45,34 @@ public class AppUser {
 
     @Column(name = "news_insight_signature", length = 64)
     private String newsInsightSignature;
+
+    /** 온보딩 결과 캐릭터 레벨 (1~5) */
+    @Column(name = "character_level")
+    private Integer characterLevel;
+
+    /** 온보딩 4문항 점수 합 */
+    @Column(name = "onboarding_total_score")
+    private Integer onboardingTotalScore;
+
+    /** 온보딩 문항별 점수 JSON e.g. [1,2,3,5] */
+    @Column(name = "onboarding_scores_json", length = 32)
+    private String onboardingScoresJson;
+
+    @Column(name = "onboarding_completed")
+    private boolean onboardingCompleted;
+
+    @Column(name = "onboarding_completed_at")
+    private java.time.LocalDateTime onboardingCompletedAt;
+
+    public boolean isOnboardingCompleted() {
+        return onboardingCompleted;
+    }
+
+    public void completeOnboarding(int level, java.util.List<Integer> scores, int total) {
+        this.characterLevel = level;
+        this.onboardingTotalScore = total;
+        this.onboardingScoresJson = scores.toString();
+        this.onboardingCompleted = true;
+        this.onboardingCompletedAt = java.time.LocalDateTime.now();
+    }
 }

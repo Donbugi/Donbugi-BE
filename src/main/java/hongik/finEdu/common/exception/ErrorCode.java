@@ -40,6 +40,10 @@ public enum ErrorCode {
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 가입된 이메일입니다", false),
     INVALID_LOGIN(HttpStatus.UNAUTHORIZED, "U002", "이메일 또는 비밀번호가 올바르지 않습니다", false),
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "U003", "로그인이 필요합니다", false),
+    FORBIDDEN(HttpStatus.FORBIDDEN, "U004", "접근 권한이 없습니다", false),
+    ONBOARDING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "U005", "온보딩이 이미 완료되었습니다", false),
+    ONBOARDING_NOT_COMPLETED(HttpStatus.BAD_REQUEST, "U006", "온보딩을 먼저 완료해 주세요", false),
+    CALENDAR_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CAL001", "일정을 찾을 수 없습니다", false),
 
     // ── 모의투자(Trading) ──
     INSUFFICIENT_CASH(HttpStatus.BAD_REQUEST, "TR001", "잔고가 부족합니다", false),

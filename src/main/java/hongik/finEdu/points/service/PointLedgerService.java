@@ -5,6 +5,7 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.points.domain.PointBenefitCode;
 import hongik.finEdu.points.dto.PointEarnRequest;
 import hongik.finEdu.points.dto.PointEarnResponseDto;
+import hongik.finEdu.points.dto.PointMonthlySummaryResponse;
 import hongik.finEdu.points.dto.RedeemLedgerResult;
 import hongik.finEdu.points.dto.PointRedeemRequest;
 import hongik.finEdu.points.entity.PointAccount;
@@ -185,5 +186,16 @@ public class PointLedgerService {
         return accountRepository.findByUserId(id)
                 .map(PointAccount::getBalance)
                 .orElse(0);
+    }
+
+    @Transactional(readOnly = true)
+    public PointMonthlySummaryResponse getMonthlySummary(String userId, java.time.YearMonth month) {
+        String id = requireUserId(userId);
+        java.time.ZoneId zone = java.time.ZoneId.of("Asia/Seoul");
+        java.time.LocalDateTime from = month.atDay(1).atStartOfDay(zone).toLocalDateTime();
+        java.time.LocalDateTime to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toLocalDateTime();
+        int earned = historyRepository.sumPositiveDeltaBetween(id, from, to);
+        int spent = historyRepository.sumNegativeDeltaBetween(id, from, to);
+        return new PointMonthlySummaryResponse(id, month, earned, Math.abs(spent), earned + spent);
     }
 }

@@ -1,12 +1,13 @@
 package hongik.finEdu.calendar.service;
 
+import hongik.finEdu.common.exception.BusinessException;
+import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.calendar.dto.Meridiem;
 import hongik.finEdu.calendar.dto.UserCalendarEventCreateRequest;
 import hongik.finEdu.calendar.dto.UserCalendarEventResponseDto;
+import hongik.finEdu.calendar.dto.UserCalendarEventUpdateRequest;
 import hongik.finEdu.calendar.entity.UserCalendarEvent;
 import hongik.finEdu.calendar.repository.UserCalendarEventRepository;
-import hongik.finEdu.common.exception.BusinessException;
-import hongik.finEdu.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +26,7 @@ public class UserCalendarEventService {
     private final UserCalendarEventRepository repository;
 
     @Transactional
-    public UserCalendarEventResponseDto create(UserCalendarEventCreateRequest req) {
+    public UserCalendarEventResponseDto create(String userId, UserCalendarEventCreateRequest req) {
         String title = validateTitle(req.title());
         LocalDate date = parseDate(req.year(), req.month(), req.day());
         Meridiem meridiem = parseMeridiem(req.meridiem());
@@ -34,6 +35,7 @@ public class UserCalendarEventService {
         String memo = normalizeMemo(req.memo());
 
         UserCalendarEvent saved = repository.save(UserCalendarEvent.builder()
+                .userId(requireUserId(userId))
                 .title(title)
                 .eventDate(date)
                 .eventTime(time)
@@ -43,23 +45,46 @@ public class UserCalendarEventService {
         return toDto(saved);
     }
 
+    @Transactional
+    public UserCalendarEventResponseDto update(String userId, Long eventId, UserCalendarEventUpdateRequest req) {
+        UserCalendarEvent event = findOwned(userId, eventId);
+        String title = validateTitle(req.title());
+        LocalDate date = parseDate(req.year(), req.month(), req.day());
+        Meridiem meridiem = parseMeridiem(req.meridiem());
+        validateClock(req.hour(), req.minute());
+        LocalTime time = toLocalTime(meridiem, req.hour(), req.minute());
+        String memo = normalizeMemo(req.memo());
+        event.update(title, date, time, memo);
+        return toDto(event);
+    }
+
+    @Transactional
+    public void delete(String userId, Long eventId) {
+        UserCalendarEvent event = findOwned(userId, eventId);
+        repository.delete(event);
+    }
+
     @Transactional(readOnly = true)
-    public List<UserCalendarEventResponseDto> listByYearMonth(int year, int month) {
+    public List<UserCalendarEventResponseDto> listByYearMonth(String userId, int year, int month) {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
-        return repository.findByEventDateBetweenOrderByEventDateAscEventTimeAsc(from, to).stream()
+        return listByRange(userId, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserCalendarEventResponseDto> listByRange(String userId, LocalDate from, LocalDate to) {
+        if (to.isBefore(from)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "종료일이 시작일보다 앞설 수 없습니다.");
+        }
+        return repository.findByUserIdAndEventDateBetweenOrderByEventDateAscEventTimeAsc(
+                        requireUserId(userId), from, to).stream()
                 .map(this::toDto)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public List<UserCalendarEventResponseDto> listByRange(LocalDate from, LocalDate to) {
-        if (to.isBefore(from)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "종료일이 시작일보다 앞설 수 없습니다.");
-        }
-        return repository.findByEventDateBetweenOrderByEventDateAscEventTimeAsc(from, to).stream()
-                .map(this::toDto)
-                .toList();
+    private UserCalendarEvent findOwned(String userId, Long eventId) {
+        return repository.findByIdAndUserId(eventId, requireUserId(userId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.CALENDAR_EVENT_NOT_FOUND));
     }
 
     private String validateTitle(String title) {
@@ -113,7 +138,7 @@ public class UserCalendarEventService {
     }
 
     /** 오전/오후 + 12시간제 시 → {@link LocalTime} */
-    static LocalTime toLocalTime(Meridiem meridiem, int hour12, int minute) {
+    public static LocalTime toLocalTime(Meridiem meridiem, int hour12, int minute) {
         int hour24 = switch (meridiem) {
             case AM -> (hour12 == 12) ? 0 : hour12;
             case PM -> (hour12 == 12) ? 12 : hour12 + 12;
@@ -152,5 +177,12 @@ public class UserCalendarEventService {
                 m,
                 e.getMemo()
         );
+    }
+
+    private static String requireUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "userId는 필수입니다.");
+        }
+        return userId.trim();
     }
 }

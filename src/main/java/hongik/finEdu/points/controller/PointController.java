@@ -1,20 +1,30 @@
 package hongik.finEdu.points.controller;
 
+import hongik.finEdu.auth.support.AuthUserResolver;
+import hongik.finEdu.config.OpenApiConfig;
 import hongik.finEdu.points.domain.PointBenefitCode;
 import hongik.finEdu.points.dto.PointActivityItemDto;
 import hongik.finEdu.points.dto.PointBalanceResponseDto;
 import hongik.finEdu.points.dto.PointBenefitItemDto;
 import hongik.finEdu.points.dto.PointEarnRequest;
 import hongik.finEdu.points.dto.PointEarnResponseDto;
+import hongik.finEdu.points.dto.PointMonthlySummaryResponse;
 import hongik.finEdu.points.dto.PointRedeemRequest;
 import hongik.finEdu.points.dto.PointRedeemResponseDto;
 import hongik.finEdu.points.service.PointActivityCacheService;
 import hongik.finEdu.points.service.PointLedgerService;
 import hongik.finEdu.points.service.PointRedemptionFacade;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.List;
 
@@ -25,8 +35,8 @@ public class PointController {
     private final PointLedgerService ledgerService;
     private final PointRedemptionFacade redemptionFacade;
     private final PointActivityCacheService pointActivityCacheService;
+    private final AuthUserResolver authUserResolver;
 
-    /** GET /api/point-benefits — 교환 가능 혜택 목록(표와 동일 기준) */
     @GetMapping("/api/point-benefits")
     public ResponseEntity<List<PointBenefitItemDto>> listBenefits() {
         List<PointBenefitItemDto> list = Arrays.stream(PointBenefitCode.values())
@@ -39,36 +49,50 @@ public class PointController {
         return ResponseEntity.ok(list);
     }
 
-    /** GET /api/points/balance?userId= — 잔여 포인트 (미가입 시 0) */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @GetMapping("/api/points/balance")
-    public ResponseEntity<PointBalanceResponseDto> balance(@RequestParam String userId) {
-        int b = ledgerService.getBalance(userId);
-        return ResponseEntity.ok(new PointBalanceResponseDto(userId.trim(), b));
+    public ResponseEntity<PointBalanceResponseDto> balance(
+            Authentication authentication,
+            @RequestParam(required = false) String userId) {
+        String uid = authUserResolver.requireMatchingUserId(authentication, userId);
+        return ResponseEntity.ok(new PointBalanceResponseDto(uid, ledgerService.getBalance(uid)));
     }
 
-    /**
-     * POST /api/points/earn — 적립(예: 퀴즈 보상). 최근 내역 Redis는 트랜잭션 커밋 후 갱신.
-     */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @PostMapping("/api/points/earn")
-    public ResponseEntity<PointEarnResponseDto> earn(@RequestBody PointEarnRequest request) {
+    public ResponseEntity<PointEarnResponseDto> earn(
+            Authentication authentication,
+            @RequestBody PointEarnRequest request) {
+        authUserResolver.requireMatchingUserId(authentication, request.userId());
         return ResponseEntity.ok(ledgerService.earn(request));
     }
 
-    /**
-     * GET /api/points/recent-activity?userId=
-     * 적립·사용 합쳐서 최신순 최대 3건 (Redis 우선, 없으면 DB 적재).
-     */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @GetMapping("/api/points/recent-activity")
-    public ResponseEntity<List<PointActivityItemDto>> recentActivity(@RequestParam String userId) {
-        return ResponseEntity.ok(pointActivityCacheService.getRecent(userId));
+    public ResponseEntity<List<PointActivityItemDto>> recentActivity(
+            Authentication authentication,
+            @RequestParam(required = false) String userId) {
+        String uid = authUserResolver.requireMatchingUserId(authentication, userId);
+        return ResponseEntity.ok(pointActivityCacheService.getRecent(uid));
     }
 
-    /**
-     * POST /api/points/redeem
-     * 본문: { "userId", "email", "benefitCode": "CONVENIENCE_DISCOUNT" 등 }
-     */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @PostMapping("/api/points/redeem")
-    public ResponseEntity<PointRedeemResponseDto> redeem(@RequestBody PointRedeemRequest request) {
+    public ResponseEntity<PointRedeemResponseDto> redeem(
+            Authentication authentication,
+            @RequestBody PointRedeemRequest request) {
+        authUserResolver.requireMatchingUserId(authentication, request.userId());
         return ResponseEntity.ok(redemptionFacade.redeem(request));
+    }
+
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    @GetMapping("/api/points/monthly-summary")
+    public ResponseEntity<PointMonthlySummaryResponse> monthlySummary(
+            Authentication authentication,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) YearMonth month) {
+        String uid = authUserResolver.requireMatchingUserId(authentication, userId);
+        YearMonth ym = month != null ? month : YearMonth.now();
+        return ResponseEntity.ok(ledgerService.getMonthlySummary(uid, ym));
     }
 }

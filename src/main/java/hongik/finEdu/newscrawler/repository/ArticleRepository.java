@@ -32,5 +32,14 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     List<Article> findAllByOrderByCollectedAtDesc(Pageable pageable);
 
     List<Article> findAllByCategoryOrderByCollectedAtDesc(String category, Pageable pageable);
+
+    @Query("""
+            SELECT a FROM Article a
+            WHERE lower(a.title) LIKE lower(concat('%', :q, '%'))
+               OR lower(a.summary) LIKE lower(concat('%', :q, '%'))
+               OR lower(a.category) LIKE lower(concat('%', :q, '%'))
+            ORDER BY a.collectedAt DESC
+            """)
+    List<Article> searchByKeyword(@Param("q") String q, Pageable pageable);
 }
 

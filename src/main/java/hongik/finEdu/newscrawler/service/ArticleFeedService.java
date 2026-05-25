@@ -50,6 +50,17 @@ public class ArticleFeedService {
         return out;
     }
 
+    @Transactional(readOnly = true)
+    public List<ArticleFeedItemDto> search(String query, int limit) {
+        if (query == null || query.isBlank()) {
+            return findLatest(limit);
+        }
+        int n = Math.min(50, Math.max(1, limit));
+        return articleRepository.searchByKeyword(query.trim(), PageRequest.of(0, n)).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     private ArticleFeedItemDto toDto(Article a) {
         List<String> tags = new ArrayList<>();
         if (a.getCategory() != null && !a.getCategory().isBlank()) {
@@ -66,8 +77,31 @@ public class ArticleFeedService {
                 safeContent(a.getContent()),
                 tags,
                 a.getUrl(),
-                null
+                estimateSentiment(a)
         );
+    }
+
+    /** 키워드 기반 간단 감성 추정 (0–100, 높을수록 긍정) */
+    private static Integer estimateSentiment(Article a) {
+        String text = ((a.getTitle() != null ? a.getTitle() : "") + " "
+                + (a.getSummary() != null ? a.getSummary() : "")).toLowerCase();
+        if (text.isBlank()) {
+            return null;
+        }
+        int score = 55;
+        if (text.contains("상승") || text.contains("증가") || text.contains("호조") || text.contains("회복")) {
+            score += 15;
+        }
+        if (text.contains("하락") || text.contains("감소") || text.contains("약세") || text.contains("우려")) {
+            score -= 15;
+        }
+        if (text.contains("급등") || text.contains("최고") || text.contains("호재")) {
+            score += 10;
+        }
+        if (text.contains("급락") || text.contains("최저") || text.contains("악재")) {
+            score -= 10;
+        }
+        return Math.max(20, Math.min(90, score));
     }
 
     private static String safeContent(String content) {

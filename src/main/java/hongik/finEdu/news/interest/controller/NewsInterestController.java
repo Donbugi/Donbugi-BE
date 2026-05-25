@@ -1,10 +1,14 @@
 package hongik.finEdu.news.interest.controller;
 
+import hongik.finEdu.auth.support.AuthUserResolver;
+import hongik.finEdu.config.OpenApiConfig;
 import hongik.finEdu.news.interest.dto.NewsInterestReadRequest;
 import hongik.finEdu.news.interest.dto.NewsInterestTrendsResponse;
 import hongik.finEdu.news.interest.service.NewsInterestRedisService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -13,25 +17,25 @@ import org.springframework.web.bind.annotation.*;
 public class NewsInterestController {
 
     private final NewsInterestRedisService newsInterestRedisService;
+    private final AuthUserResolver authUserResolver;
 
-    /**
-     * 뉴스 조회(읽음) 1회 기록 — 이번 달(Asia/Seoul) 카테고리별 횟수 Redis HINCRBY.
-     * category: 기사 category(금융·증권 등) 또는 프론트에서 정한 토픽 라벨
-     */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @PostMapping("/read")
-    public ResponseEntity<Void> recordRead(@RequestBody NewsInterestReadRequest request) {
+    public ResponseEntity<Void> recordRead(
+            Authentication authentication,
+            @RequestBody NewsInterestReadRequest request) {
+        authUserResolver.requireMatchingUserId(authentication, request.userId());
         newsInterestRedisService.recordRead(request);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * 최근 한 달 상위 토픽 + AI 한마디
-     * GET /api/news/interest/trends?userId=&top=5
-     */
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @GetMapping("/trends")
     public ResponseEntity<NewsInterestTrendsResponse> trends(
-            @RequestParam String userId,
+            Authentication authentication,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) Integer top) {
-        return ResponseEntity.ok(newsInterestRedisService.getTrends(userId, top));
+        String uid = authUserResolver.requireMatchingUserId(authentication, userId);
+        return ResponseEntity.ok(newsInterestRedisService.getTrends(uid, top));
     }
 }

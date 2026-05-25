@@ -37,16 +37,25 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**")
-                        .permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login")
-                        .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/auth/me")
-                        .authenticated()
-                        .requestMatchers(HttpMethod.PATCH, "/api/auth/me")
-                        .authenticated()
-                        .anyRequest()
-                        .permitAll())
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/articles/**",
+                                "/api/quiz/random**",
+                                "/api/quiz/random-session",
+                                "/api/main/**",
+                                "/api/stocks/**",
+                                "/api/point-benefits",
+                                "/api/issue-schedule",
+                                "/api/tax-schedule/**"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/quiz/*").permitAll()
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
@@ -65,7 +74,8 @@ public class SecurityConfig {
                 "https://donbugi.site",
                 "http://donbugi.site",
                 "https://donbugi.xyz",
-                "https://www.donbugi.xyz"
+                "https://www.donbugi.xyz",
+                "http://donbugi.xyz"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

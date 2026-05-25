@@ -4,6 +4,7 @@ import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.points.dto.policy.AttendanceCheckInRequest;
 import hongik.finEdu.points.dto.policy.AttendanceCheckInResponse;
+import hongik.finEdu.points.dto.policy.AttendanceStatusResponse;
 import hongik.finEdu.points.entity.AttendanceDay;
 import hongik.finEdu.points.entity.PointAccount;
 import hongik.finEdu.points.policy.PointPolicy;
@@ -68,6 +69,17 @@ public class AttendancePointService {
 
         int bal = accountRepository.findByUserId(userId).map(PointAccount::getBalance).orElse(0);
         return new AttendanceCheckInResponse(streak, awarded, false, bal);
+    }
+
+    @Transactional(readOnly = true)
+    public AttendanceStatusResponse getStatus(String userId) {
+        String uid = requireUserId(userId);
+        ZoneId z = ZoneId.of(timezoneId);
+        LocalDate today = LocalDate.now(z);
+        int streak = computeStreak(uid, today);
+        boolean checked = attendanceDayRepository.existsByUserIdAndAttendanceDate(uid, today);
+        int bal = accountRepository.findByUserId(uid).map(PointAccount::getBalance).orElse(0);
+        return new AttendanceStatusResponse(streak, checked, bal);
     }
 
     private int computeStreak(String userId, LocalDate fromDay) {

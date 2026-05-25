@@ -8,6 +8,9 @@ import hongik.finEdu.auth.dto.SignupRequest;
 import hongik.finEdu.auth.jwt.JwtService;
 import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
+import hongik.finEdu.points.service.PointLedgerService;
+import hongik.finEdu.user.domain.CharacterLevel;
+import hongik.finEdu.user.domain.FinIqLevelPolicy;
 import hongik.finEdu.user.entity.AppUser;
 import hongik.finEdu.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ public class AuthService {
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final PointLedgerService pointLedgerService;
 
     @Transactional
     public AuthTokenResponse signup(SignupRequest request) {
@@ -70,7 +74,7 @@ public class AuthService {
     public MeProfileResponse getProfile(String externalUserId) {
         AppUser user = appUserRepository.findByExternalUserId(externalUserId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHENTICATED, "사용자를 찾을 수 없습니다."));
-        return new MeProfileResponse(user.getExternalUserId(), user.getEmail(), user.getNickname());
+        return toMeProfile(user);
     }
 
     @Transactional
@@ -81,7 +85,30 @@ public class AuthService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHENTICATED, "사용자를 찾을 수 없습니다."));
         user.setNickname(nickname);
         appUserRepository.save(user);
-        return new MeProfileResponse(user.getExternalUserId(), user.getEmail(), user.getNickname());
+        return toMeProfile(user);
+    }
+
+    private MeProfileResponse toMeProfile(AppUser user) {
+        int balance = pointLedgerService.getBalance(user.getExternalUserId());
+        FinIqLevelPolicy.FinIqProgress finIq = FinIqLevelPolicy.progress(balance);
+        CharacterLevel character = user.getCharacterLevel() != null
+                ? CharacterLevel.fromLevel(user.getCharacterLevel())
+                : null;
+        return new MeProfileResponse(
+                user.getExternalUserId(),
+                user.getEmail(),
+                user.getNickname(),
+                user.isOnboardingCompleted(),
+                user.getCharacterLevel(),
+                character != null ? character.getEmoji() : null,
+                character != null ? character.getName() : null,
+                character != null ? character.getTag() : null,
+                finIq.finIqBalance(),
+                finIq.currentLevel(),
+                finIq.pointsToNextLevel(),
+                finIq.progressPercent(),
+                user.getOnboardingCompletedAt()
+        );
     }
 
     private static String requireText(String value, String field) {

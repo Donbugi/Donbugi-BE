@@ -5,9 +5,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface UserCalendarEventRepository extends JpaRepository<UserCalendarEvent, Long> {
 
-    List<UserCalendarEvent> findByEventDateBetweenOrderByEventDateAscEventTimeAsc(
-            LocalDate fromInclusive, LocalDate toInclusive);
+    List<UserCalendarEvent> findByUserIdAndEventDateBetweenOrderByEventDateAscEventTimeAsc(
+            String userId, LocalDate fromInclusive, LocalDate toInclusive);
+
+    Optional<UserCalendarEvent> findByIdAndUserId(Long id, String userId);
 }

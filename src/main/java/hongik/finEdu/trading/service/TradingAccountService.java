@@ -6,6 +6,7 @@ import hongik.finEdu.trading.client.StockQuote;
 import hongik.finEdu.trading.domain.OrderStatus;
 import hongik.finEdu.trading.domain.OrderType;
 import hongik.finEdu.trading.domain.TradingConstants;
+import hongik.finEdu.trading.dto.AccountSnapshotDto;
 import hongik.finEdu.trading.dto.AccountSummaryDto;
 import hongik.finEdu.trading.dto.HoldingDto;
 import hongik.finEdu.trading.dto.StockDetailDto;
@@ -32,6 +33,7 @@ import java.util.List;
 public class TradingAccountService {
 
     private final StockPriceService stockPriceService;
+    private final MarketHoursService marketHoursService;
     private final TradingAccountRepository accountRepository;
     private final TradingHoldingRepository holdingRepository;
     private final TradeHistoryRepository tradeHistoryRepository;
@@ -85,6 +87,17 @@ public class TradingAccountService {
                 totalAsset,
                 profit,
                 profitRate
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public AccountSnapshotDto getAccountSnapshot(String userId) {
+        String uid = requireUserId(userId);
+        return new AccountSnapshotDto(
+                getAccountSummary(uid),
+                listHoldings(uid),
+                listStocks(),
+                marketHoursService.isMarketOpen()
         );
     }
 

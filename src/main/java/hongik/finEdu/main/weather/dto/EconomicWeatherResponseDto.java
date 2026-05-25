@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Builder
@@ -26,6 +28,8 @@ public class EconomicWeatherResponseDto {
     private ExchangeRateIndicatorDto exchangeRate;
     private boolean cached;
     private Instant at;
+    /** FE 시장 날씨 팝업용 상세 근거 bullet */
+    private List<String> detailReasonLines;
 
     @Getter
     @Builder

@@ -10,7 +10,10 @@ import java.time.LocalTime;
 @Entity
 @Table(
         name = "user_calendar_event",
-        indexes = @Index(name = "idx_user_cal_event_date", columnList = "event_date")
+        indexes = {
+                @Index(name = "idx_user_cal_event_date", columnList = "event_date"),
+                @Index(name = "idx_user_cal_user_date", columnList = "user_id,event_date")
+        }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -19,6 +22,9 @@ public class UserCalendarEvent {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "user_id", nullable = false, length = 64)
+    private String userId;
 
     @Column(nullable = false, length = 200)
     private String title;
@@ -38,11 +44,19 @@ public class UserCalendarEvent {
     private LocalDateTime createdAt;
 
     @Builder
-    public UserCalendarEvent(String title, LocalDate eventDate, LocalTime eventTime, String memo) {
+    public UserCalendarEvent(String userId, String title, LocalDate eventDate, LocalTime eventTime, String memo) {
+        this.userId = userId;
         this.title = title;
         this.eventDate = eventDate;
         this.eventTime = eventTime;
         this.memo = memo;
         this.createdAt = LocalDateTime.now();
+    }
+
+    public void update(String title, LocalDate eventDate, LocalTime eventTime, String memo) {
+        this.title = title;
+        this.eventDate = eventDate;
+        this.eventTime = eventTime;
+        this.memo = memo;
     }
 }

@@ -42,6 +42,14 @@ public class ArticleFeedController {
         return ResponseEntity.ok(articleFeedService.findLatestByEachCategory(n));
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<List<ArticleFeedItemDto>> search(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "30") int limit) {
+        int n = Math.min(50, Math.max(1, limit));
+        return ResponseEntity.ok(articleFeedService.search(q, n));
+    }
+
     /**
      * 기사 단건 (상세 화면). 목록과 동일 스키마로 전체 본문·요약 포함.
      * GET /api/articles/{articleId}

@@ -30,6 +30,33 @@ public class TradingOrderService {
     private final TradingAccountRepository accountRepository;
     private final TradingHoldingRepository holdingRepository;
 
+    @Transactional(readOnly = true)
+    public OrderPreviewResponse previewOrder(OrderPreviewRequest request) {
+        String userId = requireUserId(request.userId());
+        String stockCode = requireStockCode(request.stockCode());
+        TradingConstants.requireStock(stockCode);
+        if (request.quantity() <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "수량은 1 이상이어야 합니다.");
+        }
+        BigDecimal price = request.limitPrice();
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+            StockQuote quote = stockPriceService.getQuote(stockCode);
+            price = quote.currentPrice();
+        }
+        BigDecimal amount = price.multiply(BigDecimal.valueOf(request.quantity()));
+        return switch (request.orderType()) {
+            case BUY -> {
+                BigDecimal fee = TradingConstants.calcBuyFee(amount);
+                yield new OrderPreviewResponse(amount, fee, BigDecimal.ZERO, amount.add(fee), price);
+            }
+            case SELL -> {
+                BigDecimal fee = TradingConstants.calcSellFee(amount);
+                BigDecimal tax = TradingConstants.calcSellTax(amount);
+                yield new OrderPreviewResponse(amount, fee, tax, amount.subtract(fee).subtract(tax), price);
+            }
+        };
+    }
+
     @Transactional
     public MarketOrderResponseDto placeMarketOrder(MarketOrderRequest request) {
         String userId = requireUserId(request.userId());
