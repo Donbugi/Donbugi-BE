@@ -20,36 +20,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("finEdu API (돈부기 백엔드)")
-                        .version("v0.0.1")
-                        .description("""
-                                ## 개요
-                                금융 교육 앱 **돈부기** 백엔드 REST API입니다.
-                                
-                                ## 인증
-                                1. `POST /api/auth/signup` 또는 `POST /api/auth/login` 호출
-                                2. 응답의 `accessToken`을 복사
-                                3. Swagger 우측 상단 **Authorize** → `Bearer {accessToken}` 입력
-                                   (또는 HTTP 헤더 `Authorization: Bearer {accessToken}`)
-                                4. 이후 🔒 표시 API는 JWT 필수
-                                
-                                ## userId 규칙
-                                - 대부분 API는 JWT의 userId를 사용합니다.
-                                - `userId` 쿼리/바디를 **생략**하면 토큰 userId가 적용됩니다.
-                                - **다른 userId**를 넣으면 403 (FORBIDDEN)입니다.
-                                
-                                ## 포인트 정책 (요약)
-                                | 활동 | 포인트 |
-                                |------|--------|
-                                | 오늘의 과제 1문항 참여 | +20P |
-                                | 오늘의 과제 3문항 전부 정답 | +20P 보너스 |
-                                | 뉴스 5·10·15…회 읽기 | +20P (5회마다) |
-                                | 뉴스 상세 퀴즈 참여 (기사당 1회) | +20P |
-                                | 연속 출석 7·14·21…일 | +100P |
-                                
-                                ## 알림
-                                - 푸시/이메일 발송 없음. `GET /api/notifications` 최초 호출 시 DB seed.
-                                - 오늘 금융 일정(최대 3건) + 오늘의 과제 알림이 생성됩니다.
-                                """))
+                        .version("v0.0.1"))
                 .tags(List.of(
                         tag(OpenApiTags.AUTH, "회원가입, 로그인, 닉네임, 온보딩(캐릭터 레벨)"),
                         tag(OpenApiTags.MAIN, "코스피, 경제 날씨(시장 심리)"),
