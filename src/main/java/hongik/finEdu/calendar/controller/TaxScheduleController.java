@@ -5,6 +5,10 @@ import hongik.finEdu.calendar.repository.TaxScheduleRepository;
 import hongik.finEdu.calendar.service.TaxScheduleCrawler;
 import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
+import hongik.finEdu.config.OpenApiParams;
+import hongik.finEdu.config.OpenApiTags;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +18,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = OpenApiTags.CALENDAR, description = "세무 일정 (국세청 크롤)")
 @RestController
 @RequestMapping("/api/tax-schedule")
 @RequiredArgsConstructor
@@ -22,14 +27,11 @@ public class TaxScheduleController {
     private final TaxScheduleRepository repository;
     private final TaxScheduleCrawler crawler;
 
-    /**
-     * 특정 연월 세무일정 조회
-     * GET /api/tax-schedule?year=2026&month=3
-     */
+    @Operation(summary = "세무 일정 (연월)", description = "국세청 세무일정. 인증 불필요.")
     @GetMapping
     public ResponseEntity<List<TaxSchedule>> getSchedule(
-        @RequestParam int year,
-        @RequestParam int month
+        @OpenApiParams.YearQuery @RequestParam int year,
+        @OpenApiParams.MonthQuery @RequestParam int month
     ) {
         List<TaxSchedule> schedules = repository.findByYearAndMonthOrderByDayAsc(year, month);
         return ResponseEntity.ok(schedules);
