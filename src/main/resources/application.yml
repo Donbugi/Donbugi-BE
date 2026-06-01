@@ -130,6 +130,16 @@ crawler:
 
 # JWT (운영에서는 app.auth.jwt.secret 를 환경변수로 강하게 지정)
 app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173
+      - http://127.0.0.1:3000
+      - https://donbugi.site
+      - http://donbugi.site
+      - https://donbugi.xyz
+      - https://www.donbugi.xyz
+      - http://donbugi.xyz
   auth:
     jwt:
       secret: ${APP_AUTH_JWT_SECRET:finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!}

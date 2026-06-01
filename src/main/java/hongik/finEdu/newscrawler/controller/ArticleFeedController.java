@@ -27,7 +27,7 @@ public class ArticleFeedController {
 
     @Operation(
             summary = "최신 뉴스 목록",
-            description = "수집 시각(collectedAt) 내림차순. limit 기본 30, 최대 100. 인증 불필요.")
+            description = "수집 시각(collectedAt) 내림차순. summary·content·url(원문 링크) 포함. limit 기본 30, 최대 100. 인증 불필요.")
     @GetMapping("/latest")
     public ResponseEntity<List<ArticleFeedItemDto>> latest(
             @Parameter(description = "건수", example = "30")
@@ -62,7 +62,7 @@ public class ArticleFeedController {
 
     @Operation(
             summary = "기사 상세",
-            description = "articleId로 단건 조회. content(본문), summary, tags, sentimentPositivePercent 포함.")
+            description = "articleId로 단건 조회. summary, content, url(원문), tags, sentimentPositivePercent 포함.")
     @GetMapping("/{articleId}")
     public ResponseEntity<ArticleFeedItemDto> one(
             @Parameter(description = "기사 ID", example = "42")
