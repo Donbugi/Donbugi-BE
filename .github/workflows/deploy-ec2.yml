@@ -41,6 +41,7 @@ jobs:
           FIN_EDU_AI_QUIZ_URL: ${{ secrets.FIN_EDU_AI_QUIZ_URL }}
           FIN_EDU_AI_INSIGHT_URL: ${{ secrets.FIN_EDU_AI_INSIGHT_URL }}
           APP_AUTH_JWT_SECRET: ${{ secrets.APP_AUTH_JWT_SECRET }}
+          KOREAEXIM_AUTH_KEY: ${{ secrets.KOREAEXIM_AUTH_KEY }}
         run: |
           set -euo pipefail
           test -n "${SSH_PRIVATE_KEY:-}" || { echo "::error::secret EC2_SSH_PRIVATE_KEY 가 비어 있습니다"; exit 1; }
@@ -49,6 +50,7 @@ jobs:
           test -n "${FINEDU_DB_USER:-}" || { echo "::error::secret FINEDU_DB_USER 가 비어 있습니다"; exit 1; }
           test -n "${FINEDU_DB_PASSWORD:-}" || { echo "::error::secret FINEDU_DB_PASSWORD 가 비어 있습니다"; exit 1; }
           test -n "${APP_AUTH_JWT_SECRET:-}" || { echo "::error::secret APP_AUTH_JWT_SECRET 가 비어 있습니다"; exit 1; }
+          test -n "${KOREAEXIM_AUTH_KEY:-}" || { echo "::error::secret KOREAEXIM_AUTH_KEY 가 비어 있습니다 (수출입은행 환율 API)"; exit 1; }
 
           DEPLOY_PATH="/opt/finedu"
           ENV_PATH="${DEPLOY_PATH}/finedu.env"

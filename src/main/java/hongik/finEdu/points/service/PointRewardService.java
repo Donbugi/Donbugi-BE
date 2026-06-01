@@ -10,6 +10,7 @@ import hongik.finEdu.points.repository.PointAccountRepository;
 import hongik.finEdu.points.repository.PointHistoryRepository;
 import hongik.finEdu.points.repository.PointRewardClaimRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,12 +40,20 @@ public class PointRewardService {
             return new PointAwardResult(false, 0, bal);
         }
 
-        claimRepository.save(PointRewardClaim.builder()
-                .userId(userId)
-                .claimKey(claimKey)
-                .points(points)
-                .title(title)
-                .build());
+        try {
+            claimRepository.save(PointRewardClaim.builder()
+                    .userId(userId)
+                    .claimKey(claimKey)
+                    .points(points)
+                    .title(title)
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            if (claimRepository.existsByClaimKey(claimKey)) {
+                int bal = accountRepository.findByUserId(userId).map(PointAccount::getBalance).orElse(0);
+                return new PointAwardResult(false, 0, bal);
+            }
+            throw e;
+        }
 
         PointAccount acc = accountRepository.findByUserId(userId)
                 .orElseGet(() -> accountRepository.save(PointAccount.builder()

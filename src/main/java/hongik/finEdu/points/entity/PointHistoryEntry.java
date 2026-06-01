@@ -31,7 +31,8 @@ public class PointHistoryEntry {
     @Column(columnDefinition = "TEXT")
     private String detail;
 
-    @Column(name = "related_ref", length = 36)
+    /** {@link PointRewardClaim#getClaimKey()} 등 멱등 키 저장 (dailyquiz:… 등 36자 초과) */
+    @Column(name = "related_ref", length = 220)
     private String relatedRef;
 
     @Column(name = "occurred_at", nullable = false)
