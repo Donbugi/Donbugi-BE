@@ -52,17 +52,15 @@ public class QuizService {
     private static final int POLL_MAX_WAIT_MS = 10_000;
     private static final int RANDOM_PACK_SIZE_MAX = 10;
 
-    /** 랜덤 세션: 기사 묶음당 한 번에 가져올 개수 */
-    private static final int SESSION_ARTICLE_BATCH = 8;
-    /** 랜덤 세션: 퀴즈 풀 채우기 최대 라운드 (기사 부족·AI 실패 대비) */
-    private static final int SESSION_MAX_ROUNDS = 10;
+    /** random-session: DB에서 한 번에 가져올 저장 퀴즈 행 수 (중복 문항 제거 여유) */
+    private static final int SESSION_DB_FETCH_MULTIPLIER = 4;
 
     private record QuizCandidate(Long articleId, String articleTitle, QuizResponseDto quiz) {
     }
 
     /**
-     * 여러 기사에서 AI(또는 DB/캐시) 퀴즈를 모은 뒤, 중복 문항을 빼고 무작위로 {@code size}개만 반환.
-     * 화면: Q1~Qn + 객관식 보기 나열.
+     * 홈 '오늘의 과제'용. DB에 이미 저장된 퀴즈만 사용 (실시간 AI 호출 없음 → 빠른 응답).
+     * 기사 상세 등은 {@link #getQuiz(Long)} 로 캐시·DB·AI 경로를 그대로 사용.
      */
     public List<QuizSessionItemDto> getRandomQuizSession(int size) {
         if (size < 1 || size > RANDOM_PACK_SIZE_MAX) {
@@ -70,23 +68,28 @@ public class QuizService {
                     "size는 1~" + RANDOM_PACK_SIZE_MAX + " 사이여야 합니다 (got " + size + ")");
         }
 
+        int fetchLimit = Math.min(50, Math.max(size, size * SESSION_DB_FETCH_MULTIPLIER));
+        List<Quiz> stored = quizRepository.findRandomStored(fetchLimit);
+        if (stored.isEmpty()) {
+            throw new BusinessException(ErrorCode.NO_ARTICLES_FOR_QUIZ,
+                    "저장된 퀴즈가 없습니다. 기사 상세에서 퀴즈를 생성한 뒤 다시 시도해 주세요.");
+        }
+
+        var articleIds = stored.stream().map(Quiz::getArticleId).distinct().toList();
+        var titleByArticleId = articleRepository.findAllById(articleIds).stream()
+                .collect(Collectors.toMap(Article::getArticleId, Article::getTitle));
+
         List<QuizCandidate> pool = new ArrayList<>();
-        for (int round = 0; round < SESSION_MAX_ROUNDS && pool.size() < size * 6; round++) {
-            List<Article> articles = articleRepository.findRandomArticlesWithContent(SESSION_ARTICLE_BATCH);
-            if (articles.isEmpty()) {
-                break;
-            }
-            for (Article a : articles) {
-                try {
-                    List<QuizResponseDto> qs = getQuiz(a.getArticleId());
-                    for (QuizResponseDto q : qs) {
-                        if (isUsableQuiz(q)) {
-                            pool.add(new QuizCandidate(a.getArticleId(), a.getTitle(), q));
-                        }
+        for (Quiz row : stored) {
+            String title = titleByArticleId.getOrDefault(row.getArticleId(), "");
+            try {
+                for (QuizResponseDto q : deserialize(row.getQuizJson())) {
+                    if (isUsableQuiz(q)) {
+                        pool.add(new QuizCandidate(row.getArticleId(), title, q));
                     }
-                } catch (BusinessException ex) {
-                    log.debug("[random-session] articleId={} 스킵: {}", a.getArticleId(), ex.getMessage());
                 }
+            } catch (BusinessException ex) {
+                log.debug("[random-session] articleId={} 스킵: {}", row.getArticleId(), ex.getMessage());
             }
         }
 
