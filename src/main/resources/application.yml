@@ -141,6 +141,7 @@ app:
       - https://donbugi.xyz
       - https://www.donbugi.xyz
       - http://donbugi.xyz
+      - https://donbugife.vercel.app
   auth:
     jwt:
       secret: ${APP_AUTH_JWT_SECRET:finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!}

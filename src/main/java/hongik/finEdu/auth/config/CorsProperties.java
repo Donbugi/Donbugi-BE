@@ -22,6 +22,7 @@ public class CorsProperties {
             "http://donbugi.site",
             "https://donbugi.xyz",
             "https://www.donbugi.xyz",
-            "http://donbugi.xyz"
+            "http://donbugi.xyz",
+            "https://donbugife.vercel.app"
     );
 }
