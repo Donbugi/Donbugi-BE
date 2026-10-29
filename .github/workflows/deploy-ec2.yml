@@ -20,6 +20,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # 테스트 실패 시 배포 중단 (Testcontainers: GitHub 러너의 Docker 사용)
+      - name: Test
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
+
       - name: Build Docker image
         run: |
           set -euo pipefail
@@ -116,7 +129,7 @@ jobs:
                 sudo docker logs --tail 200 "${CONTAINER_NAME}" || true
                 exit 1
               fi
-              if curl -fsS http://127.0.0.1:8080/swagger-ui.html >/dev/null; then
+              if curl -fsS http://127.0.0.1:8081/actuator/health >/dev/null; then
                 sudo docker ps --filter "name=${CONTAINER_NAME}"
                 exit 0
               fi

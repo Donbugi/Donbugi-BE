@@ -32,8 +32,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
         ErrorCode code = e.getErrorCode();
         log.warn("[{}] {}", code.getCode(), e.getMessage());
+        // e.getMessage() 에 이미 "코드 메시지 - 상세" 가 들어 있으므로 그대로 사용 (기존: 코드 메시지가 두 번 붙음)
         return ResponseEntity.status(code.getHttpStatus())
-                .body(ErrorResponse.of(code, e.getMessage()));
+                .body(ErrorResponse.withMessage(code, e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -1,0 +1,20 @@
+# 통합 테스트 프로필: Testcontainers(PostgreSQL·Redis) + 외부 호출 차단
+app:
+  crawl-on-startup: false
+  scheduling:
+    enabled: false
+  rate-limit:
+    enabled: false
+  points:
+    daily-earn-cap: 500
+
+mock-trading:
+  orderbook-enabled: false      # 네이버 호가 호출 대신 근사 호가 사용
+  synthetic-level-quantity: 1000
+
+quiz:
+  pregenerate:
+    enabled: false
+
+economic-weather:
+  koreaexim-auth-key: test

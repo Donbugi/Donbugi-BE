@@ -31,4 +31,13 @@ public class ErrorResponse {
                 .timestamp(LocalDateTime.now())
                 .build();
     }
+
+    public static ErrorResponse withMessage(ErrorCode errorCode, String message) {
+        return ErrorResponse.builder()
+                .code(errorCode.getCode())
+                .message(message)
+                .status(errorCode.getHttpStatus().value())
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
 }
