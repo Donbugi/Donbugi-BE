@@ -44,6 +44,8 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        // 관리 포트(기본 8081)로만 노출. exposure 는 health/info/prometheus/metrics 로 제한
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/articles/**",

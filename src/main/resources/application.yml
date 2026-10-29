@@ -14,8 +14,18 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/finedu}
     driver-class-name: org.postgresql.Driver
 
+  # Flyway: 운영 DB(기존 스키마)는 baseline 0 으로 등록 후 V1.. 적용.
+  # 마이그레이션은 IF EXISTS / IF NOT EXISTS 로 작성해 빈 DB 에서도 안전하다.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
   # JPA
+  # NOTE: 운영 스키마 dump 로 V0 baseline 을 만든 뒤 validate 로 전환 예정 (docs/API_CHANGES.md 참고)
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -28,6 +38,23 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+
+# Actuator: 관리 포트를 분리(기본 8081)해 외부 노출 없이 헬스체크·Prometheus 스크랩
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: finEdu
 
 # Swagger UI (springdoc-openapi): http://localhost:8080/swagger-ui.html
 springdoc:

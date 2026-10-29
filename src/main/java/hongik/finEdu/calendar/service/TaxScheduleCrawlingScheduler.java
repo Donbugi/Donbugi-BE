@@ -1,12 +1,13 @@
 package hongik.finEdu.calendar.service;
 
 import hongik.finEdu.calendar.repository.TaxScheduleRepository;
+import hongik.finEdu.common.lock.DistributedLock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -29,13 +30,18 @@ public class TaxScheduleCrawlingScheduler {
 
     private final TaxScheduleCrawler crawler;
     private final TaxScheduleRepository repository;
+    private final DistributedLock distributedLock;
 
     /**
      * 매월 1일 새벽 2시 - 정기 크롤링
      * 현재 월 기준 3개월치 수집
      */
-    @Scheduled(cron = "0 0 2 1 * *")
+    @Scheduled(cron = "0 0 2 1 * *", zone = "Asia/Seoul")
     public void monthlyFullCrawl() {
+        distributedLock.runExclusively("sched:tax-monthly", Duration.ofHours(1), this::doMonthlyFullCrawl);
+    }
+
+    private void doMonthlyFullCrawl() {
         log.info("===== [정기 크롤링 시작] {} =====", LocalDateTime.now());
         try {
             crawler.crawlNextThreeMonths();
@@ -50,8 +56,12 @@ public class TaxScheduleCrawlingScheduler {
      * 매주 월요일 새벽 3시 - 보완 크롤링
      * 국세청 일정 수정사항 반영
      */
-    @Scheduled(cron = "0 0 3 * * MON")
+    @Scheduled(cron = "0 0 3 * * MON", zone = "Asia/Seoul")
     public void weeklySupplementCrawl() {
+        distributedLock.runExclusively("sched:tax-weekly", Duration.ofHours(1), this::doWeeklySupplementCrawl);
+    }
+
+    private void doWeeklySupplementCrawl() {
         log.info("===== [주간 보완 크롤링 시작] {} =====", LocalDateTime.now());
         try {
             crawler.crawlNextThreeMonths();
@@ -65,9 +75,12 @@ public class TaxScheduleCrawlingScheduler {
      * 매일 새벽 4시 - 오래된 데이터 정리
      * 6개월 이전 데이터 삭제로 DB 용량 관리
      */
-    @Transactional
-    @Scheduled(cron = "0 0 4 * * *")
+    @Scheduled(cron = "0 0 4 * * *", zone = "Asia/Seoul")
     public void cleanupOldData() {
+        distributedLock.runExclusively("sched:tax-cleanup", Duration.ofMinutes(10), this::doCleanupOldData);
+    }
+
+    void doCleanupOldData() {
         LocalDate cutoffDate = LocalDate.now().minusMonths(6);
         int deleted = repository.deleteOldSchedules(cutoffDate);
         log.info("[데이터 정리] {} 이전 데이터 {}건 삭제", cutoffDate, deleted);
