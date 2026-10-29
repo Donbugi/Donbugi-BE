@@ -128,7 +128,7 @@ crawler:
     - name: 생활경제
       url: "https://news.naver.com/breakingnews/section/101/310"
 
-# JWT (운영에서는 app.auth.jwt.secret 를 환경변수로 강하게 지정)
+# JWT: APP_AUTH_JWT_SECRET 필수(32바이트 이상). local/test 프로필에서만 미설정 시 임시 랜덤 키로 기동
 app:
   cors:
     allowed-origins:
@@ -144,7 +144,7 @@ app:
       - https://donbugife.vercel.app
   auth:
     jwt:
-      secret: ${APP_AUTH_JWT_SECRET:finedu-local-dev-jwt-secret-key-please-replace-in-production-env!!}
+      secret: ${APP_AUTH_JWT_SECRET:}
       expiration-hours: 720
 
 # 포인트 교환(메일 안내) — 첫 계정 생성 시 지급 포인트, 발신 주소

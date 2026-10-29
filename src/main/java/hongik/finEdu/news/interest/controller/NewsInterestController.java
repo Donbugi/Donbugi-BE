@@ -28,15 +28,16 @@ public class NewsInterestController {
     @Operation(
             summary = "뉴스 읽음 기록",
             description = """
-                    기사 1회 읽을 때 호출. 이번 달 카테고리별 Redis 카운트 증가.
-                    오늘 5·10·15…회 읽으면 자동 +20P (point_history 반영).""")
+                    기사 1회 읽을 때 호출. articleId 를 보내면 같은 기사는 하루 1회만 집계된다.
+                    오늘 서로 다른 기사 5·10·15·20개를 읽으면 +20P (하루 최대 4회).
+                    articleId 없이 category 만 보내면 관심도 집계만 하고 보상은 없다.""")
     @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @PostMapping("/read")
     public ResponseEntity<Void> recordRead(
             Authentication authentication,
             @RequestBody NewsInterestReadRequest request) {
-        authUserResolver.requireMatchingUserId(authentication, request.userId());
-        newsInterestRedisService.recordRead(request);
+        String uid = authUserResolver.requireMatchingUserId(authentication, request.userId());
+        newsInterestRedisService.recordRead(request.withUserId(uid));
         return ResponseEntity.noContent().build();
     }
 

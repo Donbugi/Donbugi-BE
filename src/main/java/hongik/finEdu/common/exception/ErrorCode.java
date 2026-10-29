@@ -11,6 +11,11 @@ public enum ErrorCode {
     // ── 공통 ──
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C001", "서버 내부 오류가 발생했습니다", false),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "C002", "잘못된 입력입니다", false),
+    CONFLICT(HttpStatus.CONFLICT, "C003", "동시에 처리 중인 요청과 충돌했습니다. 잠시 후 다시 시도해 주세요", false),
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "C004", "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요", false),
+    ENDPOINT_GONE(HttpStatus.GONE, "C005", "더 이상 지원하지 않는 API입니다", false),
+    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C006", "요청한 경로를 찾을 수 없습니다", false),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C007", "지원하지 않는 HTTP 메서드입니다", false),
 
     // ── 기사(Article) ──
     ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND, "A001", "기사를 찾을 수 없습니다", false),
@@ -18,6 +23,8 @@ public enum ErrorCode {
 
     // ── 퀴즈(Quiz) ──
     QUIZ_GENERATION_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Q001", "퀴즈 생성 시간이 초과되었습니다", false),
+    QUIZ_ALREADY_ANSWERED(HttpStatus.CONFLICT, "Q002", "이미 답안을 제출한 문항입니다", false),
+    QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "Q003", "퀴즈 문항을 찾을 수 없습니다", false),
 
     // ── AI 서버 (일시적 장애 → 재시도 대상) ──
     AI_SERVER_ERROR(HttpStatus.BAD_GATEWAY, "AI001", "AI 서버 호출에 실패했습니다", true),

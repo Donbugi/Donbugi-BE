@@ -23,10 +23,11 @@ public class QuizController {
     private final QuizService quizService;
 
     @Operation(
-            summary = "오늘의 과제 (FE용 세션)",
+            summary = "연습용 랜덤 퀴즈 (보상 없음)",
             description = """
-                    홈 '오늘의 과제' 3문항용. 객관식 1문항 형식 + correctIndex 포함.
-                    size 기본 3. DB에 저장된 퀴즈만 무작위 반환(실시간 AI 호출 없음, 빠른 응답).""")
+                    연습 모드용. 객관식 1문항 형식 + correctIndex 포함. 포인트 보상과 무관하다.
+                    보상이 걸린 '오늘의 과제'는 GET /api/quiz/daily (서버 채점)를 사용한다.
+                    size 기본 3. DB에 저장된 퀴즈만 무작위 반환(실시간 AI 호출 없음).""")
     @GetMapping("/random-session")
     public ResponseEntity<List<QuizSessionItemDto>> getRandomQuizSession(
             @Parameter(description = "문항 수", example = "3")
