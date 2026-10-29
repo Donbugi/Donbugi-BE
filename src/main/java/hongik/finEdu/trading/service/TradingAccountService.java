@@ -8,6 +8,14 @@ import hongik.finEdu.trading.domain.OrderType;
 import hongik.finEdu.trading.domain.TradingConstants;
 import hongik.finEdu.trading.dto.AccountSnapshotDto;
 import hongik.finEdu.trading.dto.AccountSummaryDto;
+import hongik.finEdu.trading.dto.AssetHistoryPointDto;
+import hongik.finEdu.trading.dto.RankingEntryDto;
+import hongik.finEdu.trading.dto.RankingResponse;
+import hongik.finEdu.trading.engine.TradingReportJob;
+import hongik.finEdu.trading.repository.DailyAssetSnapshotRepository;
+import hongik.finEdu.user.repository.AppUserRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import java.time.LocalDate;
 import hongik.finEdu.trading.dto.HoldingDto;
 import hongik.finEdu.trading.dto.StockDetailDto;
 import hongik.finEdu.trading.dto.StockSummaryDto;
@@ -33,7 +41,10 @@ import java.util.List;
 public class TradingAccountService {
 
     private final StockPriceService stockPriceService;
-    private final MarketHoursService marketHoursService;
+    private final MarketClock marketClock;
+    private final DailyAssetSnapshotRepository snapshotRepository;
+    private final AppUserRepository appUserRepository;
+    private final StringRedisTemplate redis;
     private final TradingAccountRepository accountRepository;
     private final TradingHoldingRepository holdingRepository;
     private final TradeHistoryRepository tradeHistoryRepository;
@@ -67,13 +78,16 @@ public class TradingAccountService {
     @Transactional(readOnly = true)
     public AccountSummaryDto getAccountSummary(String userId) {
         String uid = requireUserId(userId);
-        BigDecimal cash = accountRepository.findByUserId(uid)
-                .map(TradingAccount::getCash)
-                .orElse(TradingConstants.INITIAL_CASH);
+        TradingAccount account = accountRepository.findByUserId(uid).orElse(null);
+        BigDecimal cash = account == null ? TradingConstants.INITIAL_CASH : account.getCash();
+        BigDecimal locked = account == null ? BigDecimal.ZERO : account.getLockedCash();
         List<HoldingDto> holdings = listHoldings(uid);
 
         BigDecimal stockEval = holdings.stream()
                 .map(HoldingDto::evaluationAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal evalProfit = holdings.stream()
+                .map(HoldingDto::profit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalAsset = cash.add(stockEval);
         BigDecimal profit = totalAsset.subtract(TradingConstants.INITIAL_CASH);
@@ -86,8 +100,62 @@ public class TradingAccountService {
                 stockEval,
                 totalAsset,
                 profit,
-                profitRate
+                profitRate,
+                locked,
+                cash.subtract(locked),
+                tradeHistoryRepository.sumRealizedPnl(uid),
+                evalProfit
         );
+    }
+
+    /** 일별 자산 추이 (장 마감 스냅샷 기준) */
+    @Transactional(readOnly = true)
+    public List<AssetHistoryPointDto> getAssetHistory(String userId, int days) {
+        String uid = requireUserId(userId);
+        LocalDate to = marketClock.today();
+        LocalDate from = to.minusDays(Math.min(Math.max(days, 1), 365));
+        return snapshotRepository.findByUserIdAndSnapshotDateBetweenOrderBySnapshotDateAsc(uid, from, to).stream()
+                .map(s -> new AssetHistoryPointDto(s.getSnapshotDate(), s.getTotalAsset(), s.getProfitRate(), s.getRealizedPnl()))
+                .toList();
+    }
+
+    /** 수익률 랭킹 (최근 장 마감 기준, Redis ZSET) */
+    public RankingResponse getRanking(String userId, int top) {
+        String latest = redis.opsForValue().get(TradingReportJob.RANKING_KEY + "latest");
+        if (latest == null) {
+            return new RankingResponse(null, List.of(), null);
+        }
+        String key = TradingReportJob.RANKING_KEY + latest;
+        int n = Math.min(Math.max(top, 1), 100);
+        List<RankingEntryDto> entries = new java.util.ArrayList<>();
+        var tuples = redis.opsForZSet().reverseRangeWithScores(key, 0, n - 1);
+        int rank = 0;
+        if (tuples != null) {
+            for (var t : tuples) {
+                rank++;
+                String uid = t.getValue();
+                entries.add(new RankingEntryDto(rank, nicknameOf(uid), scoreOf(t.getScore()), uid != null && uid.equals(userId)));
+            }
+        }
+        RankingEntryDto mine = null;
+        if (userId != null) {
+            Long r = redis.opsForZSet().reverseRank(key, userId);
+            Double score = redis.opsForZSet().score(key, userId);
+            if (r != null && score != null) {
+                mine = new RankingEntryDto(r.intValue() + 1, nicknameOf(userId), scoreOf(score), true);
+            }
+        }
+        return new RankingResponse(LocalDate.parse(latest), entries, mine);
+    }
+
+    private String nicknameOf(String userId) {
+        return appUserRepository.findByExternalUserId(userId)
+                .map(u -> u.getNickname() != null && !u.getNickname().isBlank() ? u.getNickname() : "익명")
+                .orElse("익명");
+    }
+
+    private static BigDecimal scoreOf(Double score) {
+        return score == null ? BigDecimal.ZERO : BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP);
     }
 
     @Transactional(readOnly = true)
@@ -97,7 +165,7 @@ public class TradingAccountService {
                 getAccountSummary(uid),
                 listHoldings(uid),
                 listStocks(),
-                marketHoursService.isMarketOpen()
+                marketClock.isMarketOpen()
         );
     }
 
@@ -154,7 +222,9 @@ public class TradingAccountService {
                 current,
                 eval,
                 profit,
-                profitRate
+                profitRate,
+                holding.getLockedQuantity(),
+                holding.getSellableQuantity()
         );
     }
 
@@ -184,7 +254,9 @@ public class TradingAccountService {
                 t.getFee(),
                 t.getTax(),
                 t.getTotalAmount(),
-                t.getTradedAt()
+                t.getTradedAt(),
+                t.getOrderId(),
+                t.getRealizedPnl()
         );
     }
 

@@ -1,5 +1,11 @@
 package hongik.finEdu.trading.controller;
 
+import hongik.finEdu.trading.dto.AssetHistoryPointDto;
+import hongik.finEdu.trading.dto.RankingResponse;
+import hongik.finEdu.trading.stream.TradingEventStream;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 import hongik.finEdu.auth.support.AuthUserResolver;
 import hongik.finEdu.config.OpenApiConfig;
 import hongik.finEdu.config.OpenApiParams;
@@ -31,10 +37,11 @@ public class TradingAccountController {
 
     private final TradingAccountService tradingAccountService;
     private final AuthUserResolver authUserResolver;
+    private final TradingEventStream tradingEventStream;
 
     @Operation(
             summary = "계좌 요약",
-            description = "현금·평가금·총자산·손익. 미개설 시 초기 1000만원 기준.")
+            description = "예수금·주문가능금액·묶인 금액·평가금·총자산·실현/평가 손익. 미개설 시 초기 1000만원 기준.")
     @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @GetMapping
     public ResponseEntity<AccountSummaryDto> getAccount(
@@ -76,5 +83,35 @@ public class TradingAccountController {
             @PathVariable String stockCode) {
         String uid = authUserResolver.requireMatchingUserId(authentication, userId);
         return ResponseEntity.ok(tradingAccountService.getHolding(uid, stockCode));
+    }
+
+    @Operation(summary = "자산 추이", description = "장 마감(15:40) 스냅샷 기준 일별 총자산·수익률. days 기본 30, 최대 365.")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    @GetMapping("/asset-history")
+    public ResponseEntity<List<AssetHistoryPointDto>> assetHistory(
+            Authentication authentication,
+            @RequestParam(defaultValue = "30") int days) {
+        String uid = authUserResolver.requireUserId(authentication);
+        return ResponseEntity.ok(tradingAccountService.getAssetHistory(uid, days));
+    }
+
+    @Operation(summary = "수익률 랭킹", description = "최근 장 마감 기준 상위 N명 + 내 순위. top 기본 20.")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    @GetMapping("/ranking")
+    public ResponseEntity<RankingResponse> ranking(
+            Authentication authentication,
+            @RequestParam(defaultValue = "20") int top) {
+        String uid = authUserResolver.requireUserId(authentication);
+        return ResponseEntity.ok(tradingAccountService.getRanking(uid, top));
+    }
+
+    @Operation(
+            summary = "체결 알림 스트림 (SSE)",
+            description = "text/event-stream. event=trade 로 체결 내역 JSON 푸시. Authorization 헤더 필요(fetch 기반 SSE 클라이언트 사용).")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(Authentication authentication) {
+        String uid = authUserResolver.requireUserId(authentication);
+        return tradingEventStream.subscribe(uid);
     }
 }

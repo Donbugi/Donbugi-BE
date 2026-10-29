@@ -10,5 +10,7 @@ public record HoldingDto(
         BigDecimal currentPrice,
         BigDecimal evaluationAmount,
         BigDecimal profit,
-        BigDecimal profitRate
+        BigDecimal profitRate,
+        int lockedQuantity,
+        int sellableQuantity
 ) {}

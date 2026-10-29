@@ -17,5 +17,7 @@ public record TradeHistoryDto(
         BigDecimal fee,
         BigDecimal tax,
         BigDecimal totalAmount,
-        LocalDateTime tradedAt
+        LocalDateTime tradedAt,
+        Long orderId,
+        BigDecimal realizedPnl
 ) {}
