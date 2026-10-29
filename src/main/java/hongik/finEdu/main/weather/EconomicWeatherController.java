@@ -1,5 +1,9 @@
 package hongik.finEdu.main.weather;
 
+import hongik.finEdu.main.weather.dto.EconomicWeatherHistoryDto;
+import org.springframework.web.bind.annotation.RequestParam;
+import java.util.List;
+
 import hongik.finEdu.config.OpenApiTags;
 import hongik.finEdu.main.weather.dto.EconomicWeatherResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,5 +32,11 @@ public class EconomicWeatherController {
     @GetMapping("/economic-weather")
     public ResponseEntity<EconomicWeatherResponseDto> getEconomicWeather() {
         return ResponseEntity.ok(economicWeatherService.getTodayWeather());
+    }
+
+    @Operation(summary = "경제 날씨 추이", description = "일별 날씨·점수·지표 변동률. days 기본 30, 최대 365. 인증 불필요.")
+    @GetMapping("/economic-weather/history")
+    public ResponseEntity<List<EconomicWeatherHistoryDto>> history(@RequestParam(defaultValue = "30") int days) {
+        return ResponseEntity.ok(economicWeatherService.getHistory(days));
     }
 }

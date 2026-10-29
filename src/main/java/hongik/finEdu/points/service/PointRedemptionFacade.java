@@ -14,14 +14,17 @@ import org.springframework.stereotype.Service;
 public class PointRedemptionFacade {
 
     private final PointLedgerService ledgerService;
-    private final PointRewardEmailService rewardEmailService;
 
-    public PointRedeemResponseDto redeem(PointRedeemRequest request) {
-        RedeemLedgerResult ledger = ledgerService.applyRedemption(request);
-        boolean mailSent = rewardEmailService.sendRedemptionNotice(ledger);
-        String mailNotice = mailSent
-                ? "등록하신 이메일로 혜택 안내 메일을 발송했습니다. QR코드는 별도 메일로 안내됩니다."
-                : "메일 발송에 실패했거나 SMTP가 설정되지 않았습니다. 서버 로그를 확인하거나 spring.mail 설정 후 다시 시도해 주세요.";
+    /**
+     * 포인트 차감·교환 기록·메일 outbox 를 한 트랜잭션으로 처리하고, 메일은 커밋 후 비동기 발송한다.
+     * mailSent 는 항상 false(발송 대기열 등록)이며 실제 발송은 수 초 내 진행된다.
+     */
+    public PointRedeemResponseDto redeem(PointRedeemRequest request, String idempotencyKey) {
+        RedeemLedgerResult ledger = ledgerService.applyRedemption(request, idempotencyKey);
+        boolean mailSent = false;
+        String mailNotice = ledger.replayed()
+                ? "이미 처리된 교환 요청입니다. (같은 Idempotency-Key)"
+                : "교환이 완료되었습니다. 안내 메일은 잠시 후 발송됩니다. QR코드는 별도 메일로 안내됩니다.";
 
         return new PointRedeemResponseDto(
                 ledger.redemptionRef(),

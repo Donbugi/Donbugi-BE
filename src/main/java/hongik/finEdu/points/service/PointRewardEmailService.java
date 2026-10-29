@@ -24,6 +24,10 @@ public class PointRewardEmailService {
     @Value("${app.points.qr-delivery-days-hint:3}")
     private int qrDeliveryDaysHint;
 
+    public boolean isConfigured() {
+        return mailSenderProvider.getIfAvailable() != null;
+    }
+
     /**
      * 교환 안내 메일. SMTP 미구성 시 false 반환 및 로그에 본문 출력.
      */

@@ -141,7 +141,12 @@ news:
 quiz:
   ai-server-url: ${FIN_EDU_AI_QUIZ_URL:http://127.0.0.1:8000/quiz}
   cache-ttl-days: 7
-  lock-ttl-seconds: 30
+  # 퀴즈 생성 분산 락 TTL — AI read timeout(60초)·재시도보다 길게
+  lock-ttl-seconds: 300
+  # 크롤링 직후 퀴즈 사전 생성
+  pregenerate:
+    enabled: true
+    max-per-batch: 30
   ai-connect-timeout-ms: 5000
   ai-read-timeout-ms: 60000
   # 과제 정답률·오답노트 (전부 Redis, DB 미사용)

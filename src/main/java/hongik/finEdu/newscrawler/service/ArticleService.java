@@ -4,6 +4,7 @@ import hongik.finEdu.newscrawler.entity.Article;
 import hongik.finEdu.newscrawler.entity.ArticleDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
 public class ArticleService {
 
     private final ArticleRepository articleRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public int saveAll(List<ArticleDto> dtos) {
@@ -42,8 +44,17 @@ public class ArticleService {
                         .build())
                 .collect(Collectors.toList());
 
-        articleRepository.saveAll(toSave);
+        List<Article> saved = articleRepository.saveAll(toSave);
         log.info("저장: {}개 / 중복 스킵: {}개", toSave.size(), dtos.size() - toSave.size());
+
+        // 커밋 후 퀴즈 사전 생성 트리거 (사용자 요청 경로에서 AI 호출 제거)
+        List<Long> ids = saved.stream()
+                .filter(a -> a.getContent() != null && !a.getContent().isBlank())
+                .map(Article::getArticleId)
+                .toList();
+        if (!ids.isEmpty()) {
+            eventPublisher.publishEvent(new ArticlesSavedEvent(ids));
+        }
 
         return toSave.size();
     }

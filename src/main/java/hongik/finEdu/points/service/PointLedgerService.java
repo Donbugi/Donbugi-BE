@@ -8,6 +8,8 @@ import hongik.finEdu.points.dto.RedeemLedgerResult;
 import hongik.finEdu.points.dto.PointRedeemRequest;
 import hongik.finEdu.points.entity.PointAccount;
 import hongik.finEdu.points.entity.PointHistoryEntry;
+import hongik.finEdu.points.entity.PointMailOutbox;
+import hongik.finEdu.points.repository.PointMailOutboxRepository;
 import hongik.finEdu.points.entity.PointRedemption;
 import hongik.finEdu.points.repository.PointAccountRepository;
 import hongik.finEdu.points.repository.PointHistoryRepository;
@@ -29,18 +31,34 @@ public class PointLedgerService {
     private final PointActivityCacheService pointActivityCacheService;
     private final AfterCommitExecutor afterCommitExecutor;
     private final PointAccountLocker accountLocker;
+    private final PointMailOutboxRepository outboxRepository;
+    private final PointMailOutboxDispatcher mailOutboxDispatcher;
 
     @Value("${app.points.demo-initial-balance:0}")
     private int demoInitialBalance;
 
     @Transactional
-    public RedeemLedgerResult applyRedemption(PointRedeemRequest request) {
+    public RedeemLedgerResult applyRedemption(PointRedeemRequest request, String idempotencyKey) {
         String userId = requireUserId(request.userId());
         String email = requireEmail(request.email());
         PointBenefitCode benefit = parseBenefit(request.benefitCode());
         int cost = benefit.getPointsRequired();
+        String idemKey = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
+        if (idemKey != null && idemKey.length() > 64) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "Idempotency-Key 는 64자 이내여야 합니다.");
+        }
 
+        // 계정 잠금을 먼저 잡아 같은 사용자의 교환을 직렬화 → 멱등키 확인도 race 없이 정확
         PointAccount account = lockAccountWithDemo(userId);
+
+        if (idemKey != null) {
+            var existing = redemptionRepository.findByUserIdAndIdempotencyKey(userId, idemKey);
+            if (existing.isPresent()) {
+                PointRedemption r = existing.get();
+                return new RedeemLedgerResult(r.getRedemptionRef(), userId, r.getEmail(), r.getBenefitCode(),
+                        r.getPointsSpent(), account.getBalance(), true);
+            }
+        }
 
         if (account.getBalance() < cost) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_POINTS,
@@ -57,6 +75,17 @@ public class PointLedgerService {
                 .email(email)
                 .benefitCode(benefit)
                 .pointsSpent(cost)
+                .idempotencyKey(idemKey)
+                .build());
+
+        // 같은 트랜잭션에서 메일 발송 작업 기록 (Transactional Outbox)
+        outboxRepository.save(PointMailOutbox.builder()
+                .redemptionRef(ref)
+                .userId(userId)
+                .email(email)
+                .benefitCode(benefit)
+                .pointsSpent(cost)
+                .balanceAfter(account.getBalance())
                 .build());
 
         historyRepository.save(PointHistoryEntry.builder()
@@ -68,7 +97,8 @@ public class PointLedgerService {
                 .build());
 
         scheduleActivityCacheRefresh(userId);
-        return new RedeemLedgerResult(ref, userId, email, benefit, cost, account.getBalance());
+        afterCommitExecutor.runAfterCommit("redeem-mail", () -> mailOutboxDispatcher.dispatchSoon(ref));
+        return new RedeemLedgerResult(ref, userId, email, benefit, cost, account.getBalance(), false);
     }
 
     /** 계정 잠금(없으면 데모 포인트와 함께 생성) */
