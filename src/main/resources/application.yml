@@ -4,7 +4,7 @@ spring:
 
   # 기본 in-memory 유저(랜덤 비밀번호) 비활성화 — JWT만 사용
   autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
 
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
