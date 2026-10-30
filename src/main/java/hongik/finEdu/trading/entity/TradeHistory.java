@@ -14,7 +14,8 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "idx_trade_history_user", columnList = "user_id"),
                 @Index(name = "idx_trade_history_stock", columnList = "stock_code"),
-                @Index(name = "idx_trade_history_traded_at", columnList = "traded_at")
+                @Index(name = "idx_trade_history_traded_at", columnList = "traded_at"),
+                @Index(name = "idx_trade_history_order", columnList = "order_id")
         }
 )
 @Getter
@@ -57,10 +58,20 @@ public class TradeHistory {
     @Column(name = "traded_at", nullable = false)
     private LocalDateTime tradedAt;
 
+    /** 체결을 만든 주문 (trading_order.id). 구 데이터는 null */
+    @Column(name = "order_id")
+    private Long orderId;
+
+    /** 매도 실현손익 = (체결가 − 평균단가) × 수량 − 수수료 − 세금. 매수는 null */
+    @Column(name = "realized_pnl", precision = 15, scale = 2)
+    private BigDecimal realizedPnl;
+
     @Builder
     public TradeHistory(String userId, String stockCode, OrderType orderType, PriceType priceType,
                         int quantity, BigDecimal price, BigDecimal fee, BigDecimal tax,
-                        BigDecimal totalAmount) {
+                        BigDecimal totalAmount, Long orderId, BigDecimal realizedPnl) {
+        this.orderId = orderId;
+        this.realizedPnl = realizedPnl;
         this.userId = userId;
         this.stockCode = stockCode;
         this.orderType = orderType;

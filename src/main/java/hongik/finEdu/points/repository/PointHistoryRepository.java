@@ -32,4 +32,7 @@ public interface PointHistoryRepository extends JpaRepository<PointHistoryEntry,
             @Param("userId") String userId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
+
+    @Query("SELECT COALESCE(SUM(h.delta), 0) FROM PointHistoryEntry h WHERE h.userId = :userId")
+    long sumDelta(@Param("userId") String userId);
 }

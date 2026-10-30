@@ -11,6 +11,8 @@ public class PointPolicy {
     /** 오늘 읽은 뉴스 N회마다 (5, 10, 15…) */
     public static final int NEWS_READ_MILESTONE_INTERVAL = 5;
     public static final int NEWS_READ_MILESTONE_POINTS = 20;
+    /** 뉴스 읽기 마일스톤 보상 하루 최대 횟수 (5개×4 = 20개까지) */
+    public static final int NEWS_READ_DAILY_MAX_MILESTONES = 4;
 
     /** 오늘의 과제: 슬롯당 풀기만 해도 */
     public static final int DAILY_QUIZ_PER_ATTEMPT = 20;

@@ -32,8 +32,10 @@ public class QuizStatsController {
     public ResponseEntity<Void> recordAttempt(
             Authentication authentication,
             @RequestBody QuizAttemptRequest request) {
-        authUserResolver.requireMatchingUserId(authentication, request.userId());
-        quizStatsRedisService.recordAttempt(request);
+        String uid = authUserResolver.requireMatchingUserId(authentication, request.userId());
+        quizStatsRedisService.recordAttempt(new QuizAttemptRequest(
+                uid, request.correct(), request.question(), request.userAnswer(),
+                request.correctAnswer(), request.explanation()));
         return ResponseEntity.noContent().build();
     }
 

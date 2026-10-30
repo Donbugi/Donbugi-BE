@@ -5,6 +5,8 @@ import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.news.interest.dto.NewsInterestReadRequest;
 import hongik.finEdu.news.interest.dto.NewsInterestTopicDto;
 import hongik.finEdu.news.interest.dto.NewsInterestTrendsResponse;
+import hongik.finEdu.newscrawler.entity.Article;
+import hongik.finEdu.newscrawler.repository.ArticleRepository;
 import hongik.finEdu.points.policy.PointPolicy;
 import hongik.finEdu.points.service.PointRewardService;
 import hongik.finEdu.user.entity.AppUser;
@@ -38,6 +40,7 @@ public class NewsInterestRedisService {
     private final NewsInterestAiClient newsInterestAiClient;
     private final AppUserRepository appUserRepository;
     private final PointRewardService pointRewardService;
+    private final ArticleRepository articleRepository;
 
     @Value("${news.interest.redis-prefix:finEdu:news:interest:}")
     private String redisPrefix;
@@ -55,40 +58,73 @@ public class NewsInterestRedisService {
         return ZoneId.of(timezoneId);
     }
 
-    /** 이번 달(서울) 해당 카테고리(또는 토픽) 읽은 횟수 +1 */
+    /**
+     * 뉴스 읽음 기록.
+     * <ul>
+     *   <li>articleId 가 있으면: 기사 카테고리는 서버가 조회, (사용자·날짜·기사) 중복 제거(SADD),
+     *       오늘 <b>서로 다른</b> 기사 5·10·15…개마다 +20P (하루 최대 {@link PointPolicy#NEWS_READ_DAILY_MAX_MILESTONES}회)</li>
+     *   <li>articleId 가 없으면(구버전 클라이언트): 관심 카테고리 집계만, 보상 없음</li>
+     * </ul>
+     * 기존에는 같은 기사로 5번 호출할 때마다 20P 가 무제한 지급됐다.
+     */
     public void recordRead(NewsInterestReadRequest req) {
         String userId = requireUserId(req.userId());
-        if (req.category() == null || req.category().isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "category는 필수입니다.");
-        }
-        String cat = req.category().trim();
-        if (cat.length() > CATEGORY_MAX_LEN) {
-            cat = cat.substring(0, CATEGORY_MAX_LEN);
-        }
-
-        YearMonth ym = YearMonth.now(zone());
-        String key = monthCountKey(userId, ym);
-
-        stringRedisTemplate.opsForHash().increment(key, cat, 1);
-        stringRedisTemplate.expire(key, Duration.ofDays(monthKeyTtlDays));
-
         LocalDate today = LocalDate.now(zone());
-        String dailyReadKey = redisPrefix + "dailyread:" + userId + ":" + today;
-        Long dailyTotal = stringRedisTemplate.opsForValue().increment(dailyReadKey);
-        stringRedisTemplate.expire(dailyReadKey, Duration.ofDays(3));
-        if (dailyTotal != null
-                && dailyTotal > 0
-                && dailyTotal % PointPolicy.NEWS_READ_MILESTONE_INTERVAL == 0) {
-            pointRewardService.tryAwardOnce(
-                    userId,
-                    "newsread:daily:" + userId + ":" + today + ":hit:" + dailyTotal,
-                    PointPolicy.NEWS_READ_MILESTONE_POINTS,
-                    "오늘 뉴스 읽기 " + dailyTotal + "회 달성",
-                    PointPolicy.NEWS_READ_MILESTONE_INTERVAL + "회마다 " + PointPolicy.NEWS_READ_MILESTONE_POINTS + "P");
+
+        String cat;
+        Long articleId = req.articleId();
+        if (articleId != null) {
+            Article article = articleRepository.findById(articleId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.ARTICLE_NOT_FOUND, "articleId=" + articleId));
+            cat = article.getCategory() != null && !article.getCategory().isBlank()
+                    ? article.getCategory().trim()
+                    : normalizeCategory(req.category());
+            String dailySetKey = redisPrefix + "dailyread:set:" + userId + ":" + today;
+            Long added = stringRedisTemplate.opsForSet().add(dailySetKey, String.valueOf(articleId));
+            stringRedisTemplate.expire(dailySetKey, Duration.ofDays(3));
+            if (added == null || added == 0) {
+                return; // 오늘 이미 읽은 기사 → 관심도·보상 모두 반영하지 않음
+            }
+            incrementInterest(userId, cat);
+            Long distinctToday = stringRedisTemplate.opsForSet().size(dailySetKey);
+            awardMilestoneIfReached(userId, today, distinctToday);
+        } else {
+            cat = normalizeCategory(req.category());
+            incrementInterest(userId, cat);
         }
     }
 
-    @Transactional
+    private String normalizeCategory(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "category 또는 articleId는 필수입니다.");
+        }
+        String cat = raw.trim();
+        return cat.length() > CATEGORY_MAX_LEN ? cat.substring(0, CATEGORY_MAX_LEN) : cat;
+    }
+
+    private void incrementInterest(String userId, String cat) {
+        String key = monthCountKey(userId, YearMonth.now(zone()));
+        stringRedisTemplate.opsForHash().increment(key, cat, 1);
+        stringRedisTemplate.expire(key, Duration.ofDays(monthKeyTtlDays));
+    }
+
+    private void awardMilestoneIfReached(String userId, LocalDate today, Long distinctToday) {
+        if (distinctToday == null || distinctToday <= 0
+                || distinctToday % PointPolicy.NEWS_READ_MILESTONE_INTERVAL != 0) {
+            return;
+        }
+        long milestone = distinctToday / PointPolicy.NEWS_READ_MILESTONE_INTERVAL;
+        if (milestone > PointPolicy.NEWS_READ_DAILY_MAX_MILESTONES) {
+            return;
+        }
+        pointRewardService.tryAwardOnce(
+                userId,
+                "newsread:daily:" + userId + ":" + today + ":m:" + milestone,
+                PointPolicy.NEWS_READ_MILESTONE_POINTS,
+                "오늘 뉴스 " + distinctToday + "개 읽기 달성",
+                PointPolicy.NEWS_READ_MILESTONE_INTERVAL + "개마다 " + PointPolicy.NEWS_READ_MILESTONE_POINTS + "P");
+    }
+
     public NewsInterestTrendsResponse getTrends(String userId, Integer top) {
         String uid = requireUserId(userId);
         int limit = top == null || top < 1 ? TOPIC_DEFAULT_LIMIT : Math.min(top, 20);

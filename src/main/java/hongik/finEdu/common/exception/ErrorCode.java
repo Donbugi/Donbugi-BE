@@ -11,6 +11,11 @@ public enum ErrorCode {
     // ── 공통 ──
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C001", "서버 내부 오류가 발생했습니다", false),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "C002", "잘못된 입력입니다", false),
+    CONFLICT(HttpStatus.CONFLICT, "C003", "동시에 처리 중인 요청과 충돌했습니다. 잠시 후 다시 시도해 주세요", false),
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "C004", "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요", false),
+    ENDPOINT_GONE(HttpStatus.GONE, "C005", "더 이상 지원하지 않는 API입니다", false),
+    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C006", "요청한 경로를 찾을 수 없습니다", false),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C007", "지원하지 않는 HTTP 메서드입니다", false),
 
     // ── 기사(Article) ──
     ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND, "A001", "기사를 찾을 수 없습니다", false),
@@ -18,6 +23,8 @@ public enum ErrorCode {
 
     // ── 퀴즈(Quiz) ──
     QUIZ_GENERATION_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Q001", "퀴즈 생성 시간이 초과되었습니다", false),
+    QUIZ_ALREADY_ANSWERED(HttpStatus.CONFLICT, "Q002", "이미 답안을 제출한 문항입니다", false),
+    QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "Q003", "퀴즈 문항을 찾을 수 없습니다", false),
 
     // ── AI 서버 (일시적 장애 → 재시도 대상) ──
     AI_SERVER_ERROR(HttpStatus.BAD_GATEWAY, "AI001", "AI 서버 호출에 실패했습니다", true),
@@ -49,11 +56,16 @@ public enum ErrorCode {
     INSUFFICIENT_CASH(HttpStatus.BAD_REQUEST, "TR001", "잔고가 부족합니다", false),
     INSUFFICIENT_QUANTITY(HttpStatus.BAD_REQUEST, "TR002", "보유 수량이 부족합니다", false),
     INVALID_STOCK_CODE(HttpStatus.BAD_REQUEST, "TR003", "유효하지 않은 종목 코드입니다", false),
-    MARKET_CLOSED(HttpStatus.BAD_REQUEST, "TR004", "장 마감 후 시장가 주문은 불가합니다", false),
+    MARKET_CLOSED(HttpStatus.BAD_REQUEST, "TR004", "주문 가능 시간이 아닙니다 (영업일 08:30~15:30)", false),
     INVALID_LIMIT_PRICE(HttpStatus.BAD_REQUEST, "TR005", "지정가가 현재가와 동일합니다. 시장가 주문을 이용해 주세요", false),
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "TR006", "주문을 찾을 수 없습니다", false),
     ORDER_ALREADY_DONE(HttpStatus.BAD_REQUEST, "TR007", "이미 체결된 주문은 취소할 수 없습니다", false),
-    STOCK_PRICE_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "TR008", "종목 시세를 가져오지 못했습니다", false);
+    STOCK_PRICE_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "TR008", "종목 시세를 가져오지 못했습니다", false),
+    INVALID_TICK_SIZE(HttpStatus.BAD_REQUEST, "TR009", "호가가격단위에 맞지 않는 가격입니다", false),
+    PRICE_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "TR010", "가격제한폭(상·하한가)을 벗어난 가격입니다", false),
+    STALE_PRICE(HttpStatus.SERVICE_UNAVAILABLE, "TR011", "시세가 지연되어 시장가 주문을 받을 수 없습니다. 잠시 후 다시 시도해 주세요", false),
+    NO_LIQUIDITY(HttpStatus.CONFLICT, "TR012", "체결 가능한 호가 잔량이 없습니다", false),
+    ORDER_NOT_MODIFIABLE(HttpStatus.BAD_REQUEST, "TR013", "정정할 수 없는 주문입니다", false);
 
     private final HttpStatus httpStatus;
     private final String code;

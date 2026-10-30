@@ -2,205 +2,182 @@ package hongik.finEdu.trading.service;
 
 import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
-import hongik.finEdu.trading.client.StockQuote;
+import hongik.finEdu.trading.domain.FixedStock;
 import hongik.finEdu.trading.domain.OrderStatus;
 import hongik.finEdu.trading.domain.OrderType;
+import hongik.finEdu.trading.domain.PriceType;
 import hongik.finEdu.trading.domain.TradingConstants;
-import hongik.finEdu.trading.dto.*;
-import hongik.finEdu.trading.entity.PendingOrder;
+import hongik.finEdu.trading.dto.LimitOrderRequest;
+import hongik.finEdu.trading.dto.LimitOrderResponseDto;
+import hongik.finEdu.trading.dto.MarketOrderRequest;
+import hongik.finEdu.trading.dto.MarketOrderResponseDto;
+import hongik.finEdu.trading.dto.OrderPreviewRequest;
+import hongik.finEdu.trading.dto.OrderPreviewResponse;
+import hongik.finEdu.trading.dto.PendingOrderDto;
+import hongik.finEdu.trading.engine.ExecutionReport;
+import hongik.finEdu.trading.engine.OrderExecutionService;
+import hongik.finEdu.trading.engine.PlaceOrderCommand;
+import hongik.finEdu.trading.entity.TradingAccount;
 import hongik.finEdu.trading.entity.TradingHolding;
-import hongik.finEdu.trading.repository.PendingOrderRepository;
+import hongik.finEdu.trading.entity.TradingOrder;
+import hongik.finEdu.trading.market.FeeTaxPolicy;
+import hongik.finEdu.trading.market.Fill;
+import hongik.finEdu.trading.market.MarketSession;
+import hongik.finEdu.trading.market.MatchingRules;
+import hongik.finEdu.trading.market.OrderBook;
+import hongik.finEdu.trading.market.PriceLimitPolicy;
+import hongik.finEdu.trading.market.TickSizePolicy;
 import hongik.finEdu.trading.repository.TradingAccountRepository;
 import hongik.finEdu.trading.repository.TradingHoldingRepository;
+import hongik.finEdu.trading.repository.TradingOrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.util.EnumSet;
+import java.util.List;
 
+/**
+ * 주문 API 파사드 (요청 DTO ↔ 엔진 커맨드 변환).
+ */
 @Service
 @RequiredArgsConstructor
 public class TradingOrderService {
 
-    private final TradingExecutionService executionService;
+    private final OrderExecutionService executionService;
+    private final OrderBookService orderBookService;
     private final StockPriceService stockPriceService;
-    private final MarketHoursService marketHoursService;
-    private final PendingOrderRepository pendingOrderRepository;
+    private final MarketClock marketClock;
+    private final FeeTaxPolicy feeTaxPolicy;
+    private final TradingOrderRepository orderRepository;
     private final TradingAccountRepository accountRepository;
     private final TradingHoldingRepository holdingRepository;
 
     @Transactional(readOnly = true)
-    public OrderPreviewResponse previewOrder(OrderPreviewRequest request) {
-        String userId = requireUserId(request.userId());
-        String stockCode = requireStockCode(request.stockCode());
-        TradingConstants.requireStock(stockCode);
+    public OrderPreviewResponse previewOrder(String userId, OrderPreviewRequest request) {
+        FixedStock stock = TradingConstants.requireStock(trim(request.stockCode()));
         if (request.quantity() <= 0) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "수량은 1 이상이어야 합니다.");
         }
-        BigDecimal price = request.limitPrice();
-        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
-            StockQuote quote = stockPriceService.getQuote(stockCode);
-            price = quote.currentPrice();
+        if (request.orderType() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "orderType은 필수입니다.");
         }
-        BigDecimal amount = price.multiply(BigDecimal.valueOf(request.quantity()));
-        return switch (request.orderType()) {
-            case BUY -> {
-                BigDecimal fee = TradingConstants.calcBuyFee(amount);
-                yield new OrderPreviewResponse(amount, fee, BigDecimal.ZERO, amount.add(fee), price);
-            }
-            case SELL -> {
-                BigDecimal fee = TradingConstants.calcSellFee(amount);
-                BigDecimal tax = TradingConstants.calcSellTax(amount);
-                yield new OrderPreviewResponse(amount, fee, tax, amount.subtract(fee).subtract(tax), price);
-            }
-        };
+        var cq = stockPriceService.getCachedQuote(stock.code());
+        PriceLimitPolicy.Band band = OrderExecutionService.bandOf(cq.quote());
+        boolean buy = request.orderType() == OrderType.BUY;
+
+        BigDecimal amount;
+        BigDecimal priceUsed;
+        long fillQty;
+        OrderBook book = orderBookService.get(stock.code());
+        if (request.limitPrice() != null && request.limitPrice().signum() > 0) {
+            priceUsed = request.limitPrice();
+            amount = priceUsed.multiply(BigDecimal.valueOf(request.quantity()));
+            fillQty = request.quantity();
+        } else {
+            Fill fill = buy ? MatchingRules.marketBuy(book, request.quantity()) : MatchingRules.marketSell(book, request.quantity());
+            amount = fill.amount();
+            priceUsed = fill.averagePrice();
+            fillQty = fill.quantity();
+        }
+        BigDecimal fee = feeTaxPolicy.fee(amount);
+        BigDecimal tax = buy ? BigDecimal.ZERO : feeTaxPolicy.sellTax(amount, stock.market(), marketClock.today());
+        BigDecimal total = buy ? amount.add(fee) : amount.subtract(fee).subtract(tax);
+
+        BigDecimal available = accountRepository.findByUserId(userId)
+                .map(TradingAccount::getAvailableCash).orElse(TradingConstants.INITIAL_CASH);
+        int sellable = holdingRepository.findByUserIdAndStockCode(userId, stock.code())
+                .map(TradingHolding::getSellableQuantity).orElse(0);
+
+        return new OrderPreviewResponse(amount, fee, tax, total, priceUsed,
+                TickSizePolicy.tickSize(priceUsed.signum() > 0 ? priceUsed : cq.quote().currentPrice()),
+                band.upper(), band.lower(), marketClock.session().name(),
+                available, sellable, fillQty, book.synthetic());
     }
 
-    @Transactional
-    public MarketOrderResponseDto placeMarketOrder(MarketOrderRequest request) {
-        String userId = requireUserId(request.userId());
-        String stockCode = requireStockCode(request.stockCode());
-        TradingConstants.requireStock(stockCode);
-
-        if (!marketHoursService.isMarketOpen()) {
-            throw new BusinessException(ErrorCode.MARKET_CLOSED);
-        }
-
-        StockQuote quote = stockPriceService.getQuote(stockCode);
-        BigDecimal price = quote.currentPrice();
-
-        return switch (request.orderType()) {
-            case BUY -> executionService.executeMarketBuy(userId, stockCode, request.quantity(), price);
-            case SELL -> executionService.executeMarketSell(userId, stockCode, request.quantity(), price);
-        };
+    public MarketOrderResponseDto placeMarketOrder(String userId, MarketOrderRequest request, String idempotencyKey) {
+        requireOrderType(request.orderType());
+        ExecutionReport r = executionService.placeOrder(new PlaceOrderCommand(
+                userId, trim(request.stockCode()), request.orderType(), PriceType.MARKET,
+                request.quantity(), null, blankToNull(idempotencyKey), null));
+        TradingOrder o = r.order();
+        BigDecimal total = r.replayed() ? o.getFilledAmount()
+                : (o.getOrderType() == OrderType.BUY ? r.amountNow().add(r.feeNow())
+                : r.amountNow().subtract(r.feeNow()).subtract(r.taxNow()));
+        return new MarketOrderResponseDto(o.getId(), o.getStockCode(), o.getOrderType(),
+                o.getFilledQuantity(), o.getAvgFillPrice(), r.feeNow(), r.taxNow(), total,
+                o.getQuantity(), o.getStatus(), r.replayed());
     }
 
-    @Transactional
-    public LimitOrderResponseDto placeLimitOrder(LimitOrderRequest request) {
-        String userId = requireUserId(request.userId());
-        String stockCode = requireStockCode(request.stockCode());
-        TradingConstants.requireStock(stockCode);
-
-        if (request.quantity() <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "수량은 1 이상이어야 합니다.");
-        }
-        if (request.targetPrice() == null || request.targetPrice().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "지정가는 0보다 커야 합니다.");
-        }
-
-        StockQuote quote = stockPriceService.getQuote(stockCode);
-        if (quote.currentPrice().compareTo(request.targetPrice()) == 0) {
-            throw new BusinessException(ErrorCode.INVALID_LIMIT_PRICE);
-        }
-
-        return switch (request.orderType()) {
-            case BUY -> placeBuyLimit(userId, stockCode, request.quantity(), request.targetPrice());
-            case SELL -> placeSellLimit(userId, stockCode, request.quantity(), request.targetPrice());
-        };
+    public LimitOrderResponseDto placeLimitOrder(String userId, LimitOrderRequest request, String idempotencyKey) {
+        requireOrderType(request.orderType());
+        ExecutionReport r = executionService.placeOrder(new PlaceOrderCommand(
+                userId, trim(request.stockCode()), request.orderType(), PriceType.LIMIT,
+                request.quantity(), request.targetPrice(), blankToNull(idempotencyKey), null));
+        return toLimitResponse(r);
     }
 
-    @Transactional
+    public LimitOrderResponseDto modifyOrder(String userId, Long orderId, BigDecimal price, Integer quantity,
+                                             String idempotencyKey) {
+        if (price == null && quantity == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "limitPrice 또는 quantity 중 하나는 필요합니다.");
+        }
+        return toLimitResponse(executionService.modify(userId, orderId, price, quantity, blankToNull(idempotencyKey)));
+    }
+
     public void cancelOrder(String userId, Long orderId) {
-        String uid = requireUserId(userId);
-        PendingOrder order = pendingOrderRepository.findByIdAndUserId(orderId, uid)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new BusinessException(ErrorCode.ORDER_ALREADY_DONE);
-        }
-        executionService.cancelPendingOrder(order);
+        executionService.cancel(userId, orderId);
     }
 
     @Transactional(readOnly = true)
-    public java.util.List<PendingOrderDto> listPendingOrders(String userId) {
-        String uid = requireUserId(userId);
-        return pendingOrderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(uid, OrderStatus.PENDING)
-                .stream()
-                .map(this::toPendingDto)
-                .toList();
+    public List<PendingOrderDto> listPendingOrders(String userId) {
+        return orderRepository.findByUserIdAndStatusInOrderByCreatedAtDesc(userId,
+                        EnumSet.of(OrderStatus.PENDING, OrderStatus.PARTIALLY_FILLED))
+                .stream().map(TradingOrderService::toDto).toList();
     }
 
-    private LimitOrderResponseDto placeBuyLimit(String userId, String stockCode, int quantity, BigDecimal targetPrice) {
-        BigDecimal amount = targetPrice.multiply(BigDecimal.valueOf(quantity));
-        BigDecimal fee = TradingConstants.calcBuyFee(amount);
-        BigDecimal reserved = amount.add(fee);
+    @Transactional(readOnly = true)
+    public Page<PendingOrderDto> listOrders(String userId, int page, int size) {
+        return orderRepository.findByUserIdOrderByCreatedAtDesc(userId,
+                        PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100)))
+                .map(TradingOrderService::toDto);
+    }
 
-        var account = executionService.getOrCreateAccount(userId);
-        if (account.getCash().compareTo(reserved) < 0) {
-            throw new BusinessException(ErrorCode.INSUFFICIENT_CASH,
-                    "필요 " + reserved + "원, 보유 " + account.getCash() + "원");
+    public MarketSession currentSession() {
+        return marketClock.session();
+    }
+
+    private static LimitOrderResponseDto toLimitResponse(ExecutionReport r) {
+        TradingOrder o = r.order();
+        return new LimitOrderResponseDto(o.getId(), o.getStockCode(), o.getOrderType(), o.getQuantity(),
+                o.getLimitPrice(), o.getStatus(), o.getFilledQuantity(), o.getAvgFillPrice(), r.replayed());
+    }
+
+    static PendingOrderDto toDto(TradingOrder o) {
+        String name = TradingConstants.findStock(o.getStockCode()).map(FixedStock::name).orElse(o.getStockCode());
+        return new PendingOrderDto(o.getId(), o.getStockCode(), name, o.getOrderType(), o.getQuantity(),
+                o.getLimitPrice(), o.getStatus(), o.getCreatedAt(), o.getPriceType(), o.getFilledQuantity(),
+                o.getRemainingQuantity(), o.getAvgFillPrice(), o.getLockedAmount(),
+                o.getSession() == null ? null : o.getSession().name(), o.getOriginalOrderId());
+    }
+
+    private static void requireOrderType(OrderType t) {
+        if (t == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "orderType(BUY/SELL)은 필수입니다.");
         }
-        account.debit(reserved);
-        accountRepository.save(account);
-
-        PendingOrder order = pendingOrderRepository.save(PendingOrder.builder()
-                .userId(userId)
-                .stockCode(stockCode)
-                .orderType(OrderType.BUY)
-                .quantity(quantity)
-                .targetPrice(targetPrice)
-                .reservedAmount(reserved)
-                .sellAvgPrice(null)
-                .build());
-
-        return new LimitOrderResponseDto(
-                order.getId(), stockCode, OrderType.BUY, quantity, targetPrice, OrderStatus.PENDING);
     }
 
-    private LimitOrderResponseDto placeSellLimit(String userId, String stockCode, int quantity, BigDecimal targetPrice) {
-        TradingHolding holding = holdingRepository.findByUserIdAndStockCode(userId, stockCode)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INSUFFICIENT_QUANTITY));
-        if (holding.getQuantity() < quantity) {
-            throw new BusinessException(ErrorCode.INSUFFICIENT_QUANTITY);
-        }
-        holding.reduceQuantity(quantity);
-        if (holding.getQuantity() == 0) {
-            holdingRepository.delete(holding);
-        } else {
-            holdingRepository.save(holding);
-        }
-
-        PendingOrder order = pendingOrderRepository.save(PendingOrder.builder()
-                .userId(userId)
-                .stockCode(stockCode)
-                .orderType(OrderType.SELL)
-                .quantity(quantity)
-                .targetPrice(targetPrice)
-                .reservedAmount(null)
-                .sellAvgPrice(holding.getAvgPrice())
-                .build());
-
-        return new LimitOrderResponseDto(
-                order.getId(), stockCode, OrderType.SELL, quantity, targetPrice, OrderStatus.PENDING);
-    }
-
-    private PendingOrderDto toPendingDto(PendingOrder order) {
-        String name = TradingConstants.findStock(order.getStockCode())
-                .map(s -> s.name())
-                .orElse(order.getStockCode());
-        return new PendingOrderDto(
-                order.getId(),
-                order.getStockCode(),
-                name,
-                order.getOrderType(),
-                order.getQuantity(),
-                order.getTargetPrice(),
-                order.getStatus(),
-                order.getCreatedAt()
-        );
-    }
-
-    private static String requireUserId(String userId) {
-        if (userId == null || userId.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "userId는 필수입니다.");
-        }
-        return userId.trim();
-    }
-
-    private static String requireStockCode(String stockCode) {
-        if (stockCode == null || stockCode.isBlank()) {
+    private static String trim(String s) {
+        if (s == null || s.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "stockCode는 필수입니다.");
         }
-        return stockCode.trim();
+        return s.trim();
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 }

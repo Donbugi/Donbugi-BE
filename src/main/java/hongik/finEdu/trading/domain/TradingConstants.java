@@ -7,15 +7,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * 모의투자 고정 상수. 수수료·세금은 {@link hongik.finEdu.trading.market.FeeTaxPolicy},
+ * 장 운영시간은 {@link hongik.finEdu.trading.market.MarketCalendar} 로 이동.
+ * 20종목 모두 유가증권시장(KOSPI) 상장 종목.
+ */
 public final class TradingConstants {
 
     public static final BigDecimal INITIAL_CASH = new BigDecimal("10000000");
-    public static final BigDecimal FEE_RATE = new BigDecimal("0.00015");
-    public static final BigDecimal TAX_RATE = new BigDecimal("0.002");
-    public static final int MARKET_OPEN_HOUR = 9;
-    public static final int MARKET_OPEN_MINUTE = 0;
-    public static final int MARKET_CLOSE_HOUR = 15;
-    public static final int MARKET_CLOSE_MINUTE = 30;
 
     private static final List<FixedStock> STOCKS = List.of(
             new FixedStock("005930", "삼성전자"),
@@ -62,15 +61,4 @@ public final class TradingConstants {
                         hongik.finEdu.common.exception.ErrorCode.INVALID_STOCK_CODE, code));
     }
 
-    public static BigDecimal calcBuyFee(BigDecimal amount) {
-        return amount.multiply(FEE_RATE).setScale(0, RoundingMode.HALF_UP);
-    }
-
-    public static BigDecimal calcSellFee(BigDecimal amount) {
-        return amount.multiply(FEE_RATE).setScale(0, RoundingMode.HALF_UP);
-    }
-
-    public static BigDecimal calcSellTax(BigDecimal amount) {
-        return amount.multiply(TAX_RATE).setScale(0, RoundingMode.HALF_UP);
-    }
 }

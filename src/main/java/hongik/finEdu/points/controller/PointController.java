@@ -10,8 +10,6 @@ import hongik.finEdu.points.domain.PointBenefitCode;
 import hongik.finEdu.points.dto.PointActivityItemDto;
 import hongik.finEdu.points.dto.PointBalanceResponseDto;
 import hongik.finEdu.points.dto.PointBenefitItemDto;
-import hongik.finEdu.points.dto.PointEarnRequest;
-import hongik.finEdu.points.dto.PointEarnResponseDto;
 import hongik.finEdu.points.dto.PointMonthlySummaryResponse;
 import hongik.finEdu.points.dto.PointRedeemRequest;
 import hongik.finEdu.points.dto.PointRedeemResponseDto;
@@ -27,6 +25,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,7 +34,7 @@ import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.List;
 
-@Tag(name = OpenApiTags.POINTS, description = "포인트 잔액·적립·교환·내역")
+@Tag(name = OpenApiTags.POINTS, description = "포인트 잔액·교환·내역 (적립은 정책 보상 API로만 가능)")
 @RestController
 @RequiredArgsConstructor
 public class PointController {
@@ -70,16 +69,6 @@ public class PointController {
         return ResponseEntity.ok(new PointBalanceResponseDto(uid, ledgerService.getBalance(uid)));
     }
 
-    @Operation(summary = "포인트 수동 적립", description = "범용 적립 API. title 필수, amount ≥ 1.")
-    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
-    @PostMapping("/api/points/earn")
-    public ResponseEntity<PointEarnResponseDto> earn(
-            Authentication authentication,
-            @RequestBody PointEarnRequest request) {
-        authUserResolver.requireMatchingUserId(authentication, request.userId());
-        return ResponseEntity.ok(ledgerService.earn(request));
-    }
-
     @Operation(
             summary = "최근 포인트 내역",
             description = "적립·사용 합쳐 최신 3건 (Redis 캐시 우선). 마이페이지 '내역'용.")
@@ -95,16 +84,18 @@ public class PointController {
     @Operation(
             summary = "혜택 교환",
             description = """
-                    benefitCode로 포인트 차감 후 교환 처리. 이메일 발송(메일 설정 시).
+                    benefitCode로 포인트 차감 후 교환 처리. 안내 메일은 outbox 로 비동기 발송(재시도).
+                    Idempotency-Key 헤더를 보내면 재시도해도 한 번만 차감된다.
                     - 잔액 부족 시 400 P002
                     - benefitCode 예: CONVENIENCE_DISCOUNT, COFFEE_COUPON""")
     @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
     @PostMapping("/api/points/redeem")
     public ResponseEntity<PointRedeemResponseDto> redeem(
             Authentication authentication,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody PointRedeemRequest request) {
-        authUserResolver.requireMatchingUserId(authentication, request.userId());
-        return ResponseEntity.ok(redemptionFacade.redeem(request));
+        String uid = authUserResolver.requireMatchingUserId(authentication, request.userId());
+        return ResponseEntity.ok(redemptionFacade.redeem(request.withUserId(uid), idempotencyKey));
     }
 
     @Operation(

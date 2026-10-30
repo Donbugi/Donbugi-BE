@@ -12,7 +12,8 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "idx_redemption_user", columnList = "user_id"),
                 @Index(name = "idx_redemption_created", columnList = "created_at")
-        }
+        },
+        uniqueConstraints = @UniqueConstraint(name = "uk_redemption_idempotency", columnNames = {"user_id", "idempotency_key"})
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -42,9 +43,14 @@ public class PointRedemption {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    /** 클라이언트 Idempotency-Key — 네트워크 재시도로 포인트가 두 번 차감되는 것을 방지 */
+    @Column(name = "idempotency_key", length = 64)
+    private String idempotencyKey;
+
     @Builder
     public PointRedemption(String redemptionRef, String userId, String email,
-                           PointBenefitCode benefitCode, int pointsSpent) {
+                           PointBenefitCode benefitCode, int pointsSpent, String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
         this.redemptionRef = redemptionRef;
         this.userId = userId;
         this.email = email;

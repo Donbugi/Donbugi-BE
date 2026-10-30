@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import hongik.finEdu.common.exception.BusinessException;
 import hongik.finEdu.common.exception.ErrorCode;
 import hongik.finEdu.common.exception.RetryableBusinessException;
+import hongik.finEdu.common.resilience.SimpleCircuitBreaker;
 import hongik.finEdu.quiz.dto.QuizResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,10 +14,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -26,11 +30,14 @@ public class AiQuizClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final SimpleCircuitBreaker circuitBreaker;
 
     public AiQuizClient(@Value("${quiz.ai-server-url}") String aiServerUrl,
                          @Value("${quiz.ai-connect-timeout-ms:5000}") int connectTimeout,
                          @Value("${quiz.ai-read-timeout-ms:60000}") int readTimeout,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         Clock clock) {
+        this.circuitBreaker = new SimpleCircuitBreaker("ai-quiz", 5, Duration.ofSeconds(30), clock);
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(connectTimeout);
         factory.setReadTimeout(readTimeout);
@@ -60,6 +67,10 @@ public class AiQuizClient {
                 "content", content
         );
 
+        if (!circuitBreaker.allowRequest()) {
+            // 차단 중에는 재시도하지 않고 즉시 실패 (BusinessException 은 @Retryable 대상 아님)
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR, "AI 서버 장애로 일시 차단 중 (circuit open)");
+        }
         String response;
         try {
             response = restClient.post()
@@ -67,10 +78,17 @@ public class AiQuizClient {
                     .body(body)
                     .retrieve()
                     .body(String.class);
+            circuitBreaker.onSuccess();
+        } catch (HttpClientErrorException e) {
+            // 4xx(본문 없음·잘못된 요청 등)는 재시도해도 결과가 같다 → 즉시 실패
+            log.warn("[AI 실패] articleId={}, {}: {}", articleId, e.getStatusCode(), e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR, e.getStatusCode() + " " + e.getMessage(), e);
         } catch (ResourceAccessException e) {
+            circuitBreaker.onFailure();
             log.warn("[AI 재시도] articleId={}, 타임아웃: {}", articleId, e.getMessage());
             throw new RetryableBusinessException(ErrorCode.AI_SERVER_ERROR, e.getMessage(), e);
         } catch (RestClientException e) {
+            circuitBreaker.onFailure();
             log.warn("[AI 재시도] articleId={}, 서버 오류: {}", articleId, e.getMessage());
             throw new RetryableBusinessException(ErrorCode.AI_SERVER_ERROR, e.getMessage(), e);
         }
